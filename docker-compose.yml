@@ -1,0 +1,126 @@
+version: "3.9"
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  chroma:
+    image: chromadb/chroma:0.5.0
+    ports:
+      - "8001:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      - ANONYMIZED_TELEMETRY=False
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      CHROMA_HOST: chroma
+      CHROMA_PORT: "8000"
+      DATABASE_URL: sqlite:////data/researchpulse.db
+    volumes:
+      - backend_data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+      chroma:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A celery_worker worker --loglevel=info --concurrency=2
+    env_file:
+      - .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      CHROMA_HOST: chroma
+      CHROMA_PORT: "8000"
+      DATABASE_URL: sqlite:////data/researchpulse.db
+    volumes:
+      - backend_data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+      chroma:
+        condition: service_healthy
+
+  beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A celery_worker beat --loglevel=info --scheduler celery.beat.PersistentScheduler --schedule /data/celerybeat-schedule
+    env_file:
+      - .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      CHROMA_HOST: chroma
+      CHROMA_PORT: "8000"
+      DATABASE_URL: sqlite:////data/researchpulse.db
+    volumes:
+      - backend_data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  flower:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A celery_worker flower --port=5555 --broker=redis://redis:6379/0
+    ports:
+      - "5555:5555"
+    env_file:
+      - .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      CHROMA_HOST: chroma
+      CHROMA_PORT: "8000"
+      DATABASE_URL: sqlite:////data/researchpulse.db
+    volumes:
+      - backend_data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  chroma_data:
+  backend_data:

@@ -1,0 +1,12 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.uv/
+*.db
+*.db-shm
+*.db-wal
+celerybeat-schedule
+.next/
+node_modules/
