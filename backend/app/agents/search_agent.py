@@ -11,7 +11,7 @@ import re
 
 from app.agents.base import BaseAgent, LLMCallBudget
 from app.config import settings
-from app.tools.arxiv_tools import ARXIV_TOOL_MAP, search_arxiv_tool, fetch_paper_tool
+from app.tools.arxiv_tools import search_arxiv_tool, search_arxiv
 
 logger = logging.getLogger(__name__)
 
@@ -48,8 +48,8 @@ class SearchAgent(BaseAgent):
 
     def __init__(self, job_id: str, budget: LLMCallBudget | None = None):
         super().__init__(job_id, budget=budget)
-        self.tools = [search_arxiv_tool, fetch_paper_tool]
-        self.tool_map = ARXIV_TOOL_MAP
+        self.tools = [search_arxiv_tool]
+        self.tool_map = {"search_arxiv": search_arxiv}
 
     def run(self, topic: str, max_papers: int | None = None) -> list[dict]:
         max_papers = max_papers or settings.max_papers_per_topic

@@ -58,8 +58,8 @@ class BaseAgent:
     def __init__(self, job_id: str, budget: LLMCallBudget | None = None):
         self.job_id = job_id
         self.client = OpenAI(
-            api_key=settings.groq_api_key,
-            base_url="https://api.groq.com/openai/v1",
+            api_key=settings.llm_api_key,
+            base_url=settings.llm_base_url,
         )
         self.trace = TraceService()
         self.budget = budget or LLMCallBudget(settings.max_llm_calls_per_job)

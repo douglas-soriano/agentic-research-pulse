@@ -24,7 +24,7 @@ import json
 import logging
 
 import redis.asyncio as aioredis
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
 from app.config import settings
@@ -62,8 +62,9 @@ async def _next_message(ps: aioredis.client.PubSub, timeout: float = 0.5) -> str
     return None
 
 
-def _sse(data: str) -> str:
-    return f"data: {data}\n\n"
+def _sse(data: str, event_id: int | None = None) -> str:
+    prefix = f"id: {event_id}\n" if event_id is not None else ""
+    return f"{prefix}data: {data}\n\n"
 
 
 def _heartbeat() -> str:
@@ -125,11 +126,18 @@ async def stream_task(job_id: str):
 # ---------------------------------------------------------------------------
 
 @router.get("/trace/{job_id}")
-async def stream_trace(job_id: str):
+async def stream_trace(job_id: str, request: Request):
+    # Last-Event-ID is sent by the browser on SSE reconnect — skip already-seen steps.
+    last_id_header = request.headers.get("last-event-id")
+    start_index = int(last_id_header) + 1 if last_id_header and last_id_header.isdigit() else 0
+
     async def generator():
-        # Replay steps that arrived before the client connected
-        for raw in stream_service.get_buffered_steps(job_id):
-            yield _sse(raw)
+        buffered = stream_service.get_buffered_steps(job_id)
+        next_id = len(buffered)
+        for i, raw in enumerate(buffered):
+            if i < start_index:
+                continue
+            yield _sse(raw, event_id=i)
 
         # Check if already done; if so nothing more to stream
         final = stream_service.get_task_final(job_id)
@@ -166,9 +174,9 @@ async def stream_trace(job_id: str):
                 event_type = parsed.get("event")
 
                 if event_type == "step":
-                    yield _sse(raw)
+                    yield _sse(raw, event_id=next_id)
+                    next_id += 1
                 elif event_type in ("done", "failed"):
-                    # Terminal — no more steps will come
                     break
         except asyncio.CancelledError:
             pass

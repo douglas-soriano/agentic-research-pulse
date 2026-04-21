@@ -1,40 +1,31 @@
-from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    groq_api_key: str
+    # LLM provider — defaults to local Ollama. Override via env vars for Groq:
+    #   LLM_BASE_URL=https://api.groq.com/openai/v1
+    #   LLM_API_KEY=gsk_...
+    #   LLM_MODEL=llama-3.3-70b-versatile
+    llm_base_url: str = "http://host.docker.internal:11434/v1"
+    llm_api_key: str = "ollama"
+    llm_model: str = "qwen2.5:7b"
+
     redis_url: str = "redis://localhost:6379/0"
     chroma_host: str = "localhost"
     chroma_port: int = 8000
     database_url: str = "sqlite:////data/researchpulse.db"
 
     # Agent config
-    llm_model: str = "llama-3.3-70b-versatile"
     max_papers_per_topic: int = 5
     chunk_size_tokens: int = 512
     chunk_overlap_tokens: int = 64
     max_tool_retries: int = 3
-    # Groq free tier: ~30 RPM for Llama 70B. Retry-After header guides actual delay.
-    llm_api_max_retries: int = 6
-    llm_api_retry_base_seconds: float = 10.0
-    llm_api_retry_max_seconds: float = 120.0
-
-    # Hard cap on total LLM API calls per pipeline job.
-    # Shared across all agents (Search + Extract × N papers + Synthesis).
+    llm_api_max_retries: int = 4
+    llm_api_retry_base_seconds: float = 5.0
+    llm_api_retry_max_seconds: float = 60.0
     max_llm_calls_per_job: int = 60
-
-    @field_validator("groq_api_key")
-    @classmethod
-    def _groq_present(cls, v: str) -> str:
-        if not v or not str(v).strip():
-            raise ValueError(
-                "GROQ_API_KEY is missing or empty. Set it in the project .env file "
-                "and rebuild containers so Celery/FastAPI can start."
-            )
-        return v
 
 
 settings = Settings()
