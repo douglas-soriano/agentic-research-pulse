@@ -1,8 +1,6 @@
 """
 Synthesis tool definitions — claim extraction and citation verification.
 """
-from google.genai import types
-
 from app.tools.vector_tools import verify_chunk_exists
 
 
@@ -46,67 +44,65 @@ def verify_citation(chunk_id: str, paper_id: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Gemini tool declarations
+# Tool declarations (OpenAI function-calling format)
 # ---------------------------------------------------------------------------
 
-extract_claims_tool = types.Tool(
-    function_declarations=[
-        types.FunctionDeclaration(
-            name="extract_claims",
-            description=(
-                "Extract and validate structured claims from paper chunks. "
-                "Each claim must include a chunk_id that traces back to the source text."
-            ),
-            parameters={
-                "type": "object",
-                "properties": {
-                    "paper_id": {"type": "string"},
-                    "chunks": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "chunk_id": {"type": "string", "description": "ID of the source chunk"},
-                                "text": {"type": "string", "description": "The claim text"},
-                                "category": {
-                                    "type": "string",
-                                    "description": "One of: finding, method, limitation, contribution",
-                                },
-                                "confidence": {
-                                    "type": "number",
-                                    "description": "Confidence 0.0–1.0",
-                                },
+extract_claims_tool = {
+    "type": "function",
+    "function": {
+        "name": "extract_claims",
+        "description": (
+            "Extract and validate structured claims from paper chunks. "
+            "Each claim must include a chunk_id that traces back to the source text."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "paper_id": {"type": "string"},
+                "chunks": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "chunk_id": {"type": "string", "description": "ID of the source chunk"},
+                            "text": {"type": "string", "description": "The claim text"},
+                            "category": {
+                                "type": "string",
+                                "description": "One of: finding, method, limitation, contribution",
                             },
-                            "required": ["chunk_id", "text"],
+                            "confidence": {
+                                "type": "number",
+                                "description": "Confidence 0.0–1.0",
+                            },
                         },
+                        "required": ["chunk_id", "text"],
                     },
                 },
-                "required": ["paper_id", "chunks"],
             },
-        )
-    ]
-)
+            "required": ["paper_id", "chunks"],
+        },
+    },
+}
 
-verify_citation_tool = types.Tool(
-    function_declarations=[
-        types.FunctionDeclaration(
-            name="verify_citation",
-            description=(
-                "Verify that a citation (chunk_id + paper_id pair) is grounded in the vector DB. "
-                "MUST be called for every citation before including it in the synthesis. "
-                "Unverified citations must be removed."
-            ),
-            parameters={
-                "type": "object",
-                "properties": {
-                    "chunk_id": {"type": "string"},
-                    "paper_id": {"type": "string"},
-                },
-                "required": ["chunk_id", "paper_id"],
+verify_citation_tool = {
+    "type": "function",
+    "function": {
+        "name": "verify_citation",
+        "description": (
+            "Verify that a citation (chunk_id + paper_id pair) is grounded in the vector DB. "
+            "MUST be called for every citation before including it in the synthesis. "
+            "Unverified citations must be removed."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "chunk_id": {"type": "string"},
+                "paper_id": {"type": "string"},
             },
-        )
-    ]
-)
+            "required": ["chunk_id", "paper_id"],
+        },
+    },
+}
 
 SYNTHESIS_TOOL_MAP = {
     "extract_claims": extract_claims,

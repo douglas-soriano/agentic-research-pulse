@@ -7,11 +7,16 @@ Also drives the task lifecycle SSE stream:
   started (published here at the top of run())
   done / failed (published here at completion)
 """
+import logging
 import time
 
+from app.agents.base import LLMCallBudget
+
+logger = logging.getLogger(__name__)
 from app.agents.search_agent import SearchAgent
 from app.agents.extract_agent import ExtractAgent
 from app.agents.synthesis_agent import SynthesisAgent
+from app.config import settings
 from app.models.claim import Claim
 from app.models.review import ReviewCreate
 from app.services.paper_service import PaperService
@@ -33,12 +38,46 @@ class Orchestrator:
         stream_service.task_started(self.job_id)
 
         try:
+            # One shared budget for the entire job — all agents draw from it.
+            budget = LLMCallBudget(settings.max_llm_calls_per_job)
+
             # Phase 1: Search (3 sub-queries, merged)
-            search_agent = SearchAgent(self.job_id)
+            search_agent = SearchAgent(self.job_id, budget=budget)
             papers_meta = search_agent.run(topic_name, max_papers=max_papers)
 
             if not papers_meta:
-                raise RuntimeError("SearchAgent returned no papers")
+                logger.warning("SearchAgent found no papers for topic: %r", topic_name)
+                synthesis_result = {
+                    "synthesis": "No papers found for this topic on arXiv. Try a broader or different search term.",
+                    "citations": {},
+                    "cited_papers": [],
+                    "citations_verified": 0,
+                    "citations_rejected": 0,
+                }
+                review = self.review_service.save(
+                    ReviewCreate(
+                        topic_id=topic_id,
+                        topic_name=topic_name,
+                        synthesis=synthesis_result["synthesis"],
+                        citations={},
+                        cited_papers=[],
+                        papers_processed=0,
+                        claims_extracted=0,
+                        citations_verified=0,
+                        citations_rejected=0,
+                    )
+                )
+                total_ms = int((time.monotonic() - start_wall) * 1000)
+                stats = {
+                    "total_duration_ms": total_ms,
+                    "papers_processed": 0,
+                    "claims_extracted": 0,
+                    "citations_verified": 0,
+                    "citations_rejected": 0,
+                }
+                self.trace.complete(self.job_id, stats)
+                stream_service.task_done(self.job_id, review_id=review.id, stats=stats)
+                return {"review_id": review.id, **stats}
 
             # Phase 2: Ingest (fetch + embed) each paper
             papers = []
@@ -47,8 +86,9 @@ class Orchestrator:
                 if paper:
                     papers.append(paper)
 
-            # Phase 3: Extract claims from each embedded paper
-            extract_agent = ExtractAgent(self.job_id)
+            # Phase 3: Extract claims — reuse same agent instance across papers
+            # so the shared budget is honoured without re-instantiating.
+            extract_agent = ExtractAgent(self.job_id, budget=budget)
             all_claims: list[Claim] = []
             for paper in papers:
                 if not paper.embedded:
@@ -65,7 +105,7 @@ class Orchestrator:
                 "citations_rejected": 0,
             }
             if all_claims:
-                synth_agent = SynthesisAgent(self.job_id)
+                synth_agent = SynthesisAgent(self.job_id, budget=budget)
                 synthesis_result = synth_agent.run(topic_name, all_claims, papers)
 
             # Phase 5: Persist review

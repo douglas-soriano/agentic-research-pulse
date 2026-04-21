@@ -2,24 +2,18 @@
 run_pipeline_job — the main async job triggered when a topic is added.
 Runs the full multi-agent orchestration pipeline.
 """
-from celery_worker import celery_app
-from google.genai.errors import ClientError
+from openai import APIStatusError
 
+from celery_worker import celery_app
 from app.agents.orchestrator import Orchestrator
 
 
 def _retryable_pipeline_error(exc: BaseException) -> bool:
     """Only retry transient API / overload errors — not validation bugs or bad input."""
-    if isinstance(exc, ClientError):
-        code = getattr(exc, "status_code", None)
-        return code in (429, 500, 503)
+    if isinstance(exc, APIStatusError):
+        return exc.status_code in (429, 500, 503)
     text = str(exc).lower()
-    return (
-        "429" in text
-        or "resource exhausted" in text
-        or "resource_exhausted" in text
-        or "503" in text
-    )
+    return "429" in text or "rate limit" in text or "503" in text
 
 
 @celery_app.task(

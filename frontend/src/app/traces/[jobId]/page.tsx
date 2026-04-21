@@ -198,7 +198,7 @@ export default function TracePage({ params }: { params: { jobId: string } }) {
       {taskEvent?.event === "done" && taskEvent.review_id && (
         <div style={{ marginBottom: "1rem" }}>
           <Link
-            href={`/review/${taskEvent.job_id}`}
+            href={`/review/${taskEvent.review_id}`}
             style={{ color: "#68d391", fontSize: "0.9rem" }}
           >
             View completed review →

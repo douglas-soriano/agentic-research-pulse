@@ -12,7 +12,7 @@ The synthesis text is stored verbatim; the API returns both text + map.
 import json
 import re
 
-from app.agents.base import BaseAgent
+from app.agents.base import BaseAgent, LLMCallBudget
 from app.models.claim import Claim
 from app.models.paper import Paper
 from app.models.review import CitedPaper
@@ -53,8 +53,8 @@ RULES:
 class SynthesisAgent(BaseAgent):
     agent_name = "synthesis_agent"
 
-    def __init__(self, job_id: str):
-        super().__init__(job_id)
+    def __init__(self, job_id: str, budget: LLMCallBudget | None = None):
+        super().__init__(job_id, budget=budget)
         self.tools = [verify_citation_tool, semantic_search_tool]
         self.tool_map = {**SYNTHESIS_TOOL_MAP, **VECTOR_TOOL_MAP}
 
@@ -107,6 +107,8 @@ class SynthesisAgent(BaseAgent):
     # ------------------------------------------------------------------
 
     def _parse_result(self, text: str, claims: list[Claim], papers: list[Paper]) -> dict:
+        text = re.sub(r'^```(?:json)?\s*', '', text.strip())
+        text = re.sub(r'\s*```$', '', text).strip()
         data = {}
         try:
             data = json.loads(text)

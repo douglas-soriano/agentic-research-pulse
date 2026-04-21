@@ -6,13 +6,14 @@ covering different angles of the topic, execute search_arxiv for each,
 then merge and deduplicate results by arxiv_id before returning.
 """
 import json
+import logging
 import re
 
-from google.genai import types
-
-from app.agents.base import BaseAgent
+from app.agents.base import BaseAgent, LLMCallBudget
 from app.config import settings
 from app.tools.arxiv_tools import ARXIV_TOOL_MAP, search_arxiv_tool, fetch_paper_tool
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You are a scientific literature search agent.
 
@@ -45,8 +46,8 @@ arxiv_id, title, authors, abstract, published_at, url."""
 class SearchAgent(BaseAgent):
     agent_name = "search_agent"
 
-    def __init__(self, job_id: str):
-        super().__init__(job_id)
+    def __init__(self, job_id: str, budget: LLMCallBudget | None = None):
+        super().__init__(job_id, budget=budget)
         self.tools = [search_arxiv_tool, fetch_paper_tool]
         self.tool_map = ARXIV_TOOL_MAP
 
@@ -64,9 +65,23 @@ class SearchAgent(BaseAgent):
             }
         ]
 
-        response = self._run_loop(messages, system=system)
+        # force_tool_first=True prevents Gemini from answering with plain text
+        # on the first turn instead of actually calling search_arxiv.
+        # force_json_on_completion=True catches the case where Gemini returns
+        # a prose summary ("STEP 1 — planning...") instead of the required JSON.
+        response = self._run_loop(
+            messages, system=system,
+            force_tool_first=True,
+            force_json_on_completion=True,
+        )
         text = self._extract_text(response)
-        return self._parse_and_dedup(text)
+        papers = self._parse_and_dedup(text)
+        if not papers:
+            logger.warning(
+                "SearchAgent: _parse_and_dedup returned 0 papers. "
+                "Raw model text (first 500 chars): %r", text[:500]
+            )
+        return papers
 
     def _parse_and_dedup(self, text: str) -> list[dict]:
         papers = self._extract_json_papers(text)
@@ -82,6 +97,7 @@ class SearchAgent(BaseAgent):
         return unique
 
     def _extract_json_papers(self, text: str) -> list[dict]:
+        text = _strip_markdown(text)
         try:
             return json.loads(text).get("papers", [])
         except (json.JSONDecodeError, AttributeError):
@@ -93,3 +109,11 @@ class SearchAgent(BaseAgent):
             except json.JSONDecodeError:
                 pass
         return []
+
+
+def _strip_markdown(text: str) -> str:
+    """Remove ```json ... ``` or ``` ... ``` wrappers that models sometimes add."""
+    text = text.strip()
+    text = re.sub(r'^```(?:json)?\s*', '', text)
+    text = re.sub(r'\s*```$', '', text)
+    return text.strip()

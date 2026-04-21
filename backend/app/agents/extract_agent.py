@@ -4,7 +4,7 @@ Citation grounding: every claim must reference a chunk_id from the vector DB.
 """
 import json
 
-from app.agents.base import BaseAgent
+from app.agents.base import BaseAgent, LLMCallBudget
 from app.models.paper import Paper
 from app.models.claim import Claim
 from app.tools.vector_tools import VECTOR_TOOL_MAP, semantic_search_tool
@@ -33,8 +33,8 @@ IMPORTANT: Never invent chunk_ids. Only use chunk_ids returned by semantic_searc
 class ExtractAgent(BaseAgent):
     agent_name = "extract_agent"
 
-    def __init__(self, job_id: str):
-        super().__init__(job_id)
+    def __init__(self, job_id: str, budget: LLMCallBudget | None = None):
+        super().__init__(job_id, budget=budget)
         self.tools = [semantic_search_tool, extract_claims_tool]
         self.tool_map = {**VECTOR_TOOL_MAP, **SYNTHESIS_TOOL_MAP}
 
@@ -61,6 +61,8 @@ class ExtractAgent(BaseAgent):
 
     def _parse_claims(self, text: str, paper: Paper) -> list[Claim]:
         import re
+        text = re.sub(r'^```(?:json)?\s*', '', text.strip())
+        text = re.sub(r'\s*```$', '', text).strip()
         try:
             data = json.loads(text)
         except json.JSONDecodeError:
