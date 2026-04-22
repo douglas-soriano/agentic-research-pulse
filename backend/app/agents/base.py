@@ -9,8 +9,10 @@ Uses the openai SDK pointed at Groq's OpenAI-compatible endpoint:
 """
 import json
 import logging
+import os
 import random
 import time
+from datetime import datetime, timezone
 from typing import Any
 
 from openai import OpenAI, APIStatusError
@@ -19,6 +21,21 @@ from app.config import settings
 from app.services.trace_service import TraceService
 
 logger = logging.getLogger(__name__)
+
+LLM_LOG_DIR = "/data/llm_logs"
+LLM_LOG_FILE = os.path.join(LLM_LOG_DIR, "latest.log")
+
+
+def init_llm_log(topic: str, job_id: str) -> None:
+    """Call once at the start of each pipeline run to reset the log."""
+    os.makedirs(LLM_LOG_DIR, exist_ok=True)
+    with open(LLM_LOG_FILE, "w", encoding="utf-8") as f:
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        f.write(f"{'=' * 72}\n")
+        f.write(f"PIPELINE START: {topic}\n")
+        f.write(f"Job ID:         {job_id}\n")
+        f.write(f"Started at:     {ts}\n")
+        f.write(f"{'=' * 72}\n")
 
 
 class LLMCallBudget:
@@ -172,13 +189,14 @@ class BaseAgent:
             )
 
             response = self._generate_content_with_retry(msgs, tool_choice=tool_choice)
+            self._log_llm(iteration, msgs, response)
             message = response.choices[0].message
 
             if not message.tool_calls:
                 text = message.content or ""
                 if (
                     force_json_on_completion
-                    and iteration > 0
+                    and (iteration > 0 or not self.tools)
                     and not text.strip().startswith("{")
                 ):
                     # Model returned prose instead of JSON — demand JSON-only.
@@ -192,7 +210,9 @@ class BaseAgent:
                             "No prose, no step descriptions, no markdown — just the raw JSON."
                         ),
                     })
-                    return self._generate_content_with_retry(msgs, tool_choice="none")
+                    final = self._generate_content_with_retry(msgs, tool_choice="none")
+                    self._log_llm(-1, msgs, final)
+                    return final
                 return response
 
             # Append assistant message with tool_calls
@@ -301,6 +321,51 @@ class BaseAgent:
             "tool_call_id": tool_call_id,
             "content": json.dumps({"error": str(last_error)}),
         }
+
+    # ------------------------------------------------------------------
+    # LLM conversation logger
+    # ------------------------------------------------------------------
+
+    def _log_llm(self, iteration: int, msgs: list[dict], response) -> None:
+        try:
+            path = LLM_LOG_FILE
+            msg = response.choices[0].message
+            ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
+            sep = "=" * 72
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(f"\n{sep}\n")
+                f.write(f"[{ts}] {self.agent_name}  iteration={iteration}  budget={self.budget.used}/{self.budget.limit}\n")
+                f.write(f"{sep}\n")
+                f.write("--- MESSAGES SENT ---\n")
+                for m in msgs:
+                    role = m.get("role", "?").upper()
+                    content = m.get("content") or ""
+                    tool_calls = m.get("tool_calls", [])
+                    if role == "TOOL":
+                        tool_id = m.get("tool_call_id", "")
+                        preview = content[:300] + ("…" if len(content) > 300 else "")
+                        f.write(f"[TOOL result id={tool_id}]\n{preview}\n\n")
+                    elif tool_calls:
+                        f.write(f"[ASSISTANT - called tools]\n")
+                        for tc in tool_calls:
+                            fn = tc.get("function", {})
+                            f.write(f"  → {fn.get('name')}({fn.get('arguments', '')})\n")
+                        f.write("\n")
+                    else:
+                        preview = str(content)[:600] + ("…" if len(str(content)) > 600 else "")
+                        f.write(f"[{role}]\n{preview}\n\n")
+                f.write("--- RESPONSE ---\n")
+                if msg.tool_calls:
+                    f.write("[ASSISTANT - calling tools]\n")
+                    for tc in msg.tool_calls:
+                        f.write(f"  → {tc.function.name}({tc.function.arguments})\n")
+                else:
+                    text = (msg.content or "")
+                    preview = text[:800] + ("…" if len(text) > 800 else "")
+                    f.write(f"[ASSISTANT - text]\n{preview}\n")
+                f.write("\n")
+        except Exception:
+            pass  # logging must never crash the agent
 
     # ------------------------------------------------------------------
     # Helpers

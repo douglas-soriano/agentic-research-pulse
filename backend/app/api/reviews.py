@@ -79,11 +79,12 @@ def _to_response(review) -> ReviewResponse:
     )
 
 
-@router.get("/{topic_id}", response_model=ReviewResponse)
-def get_review(topic_id: str):
-    review = review_service.get_latest(topic_id)
+@router.get("/{id}", response_model=ReviewResponse)
+def get_review(id: str):
+    # Accept either review_id (from trace page) or topic_id (from topics list)
+    review = review_service.get_by_id(id) or review_service.get_latest(id)
     if not review:
-        raise HTTPException(status_code=404, detail="No review found for this topic yet")
+        raise HTTPException(status_code=404, detail="Review not found")
     return _to_response(review)
 
 

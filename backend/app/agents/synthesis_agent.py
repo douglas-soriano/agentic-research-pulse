@@ -5,49 +5,38 @@ Citation format:
   Inline tokens:  [citation_0001], [citation_0002], …
   Returned map:   {"0001": {paper_id, arxiv_id, title, authors, chunk_id}, …}
 
-Citation grounding is enforced: verify_citation must return True before
-a token is assigned. Rejected citations are counted and excluded.
-The synthesis text is stored verbatim; the API returns both text + map.
+Claims are pre-verified in Python before the LLM sees them, so the model
+only needs to write text — no tool calls required during synthesis.
 """
 import json
 import re
+import time
 
 from app.agents.base import BaseAgent, LLMCallBudget
 from app.models.claim import Claim
 from app.models.paper import Paper
 from app.models.review import CitedPaper
-from app.tools.synthesis_tools import SYNTHESIS_TOOL_MAP, verify_citation_tool
-from app.tools.vector_tools import VECTOR_TOOL_MAP, semantic_search_tool
+from app.tools.synthesis_tools import verify_citation
 
 SYSTEM_PROMPT = """You are a scientific synthesis agent producing a living literature review.
 
-Citation token format: [citation_XXXX] where XXXX is a zero-padded 4-digit counter (0001, 0002, …).
+You will receive a list of pre-verified claims, each tagged with a citation token like [citation_0001].
 
-REQUIRED WORKFLOW:
+TASK:
+Write a 4–6 paragraph synthesis covering: main themes, key findings, methodological patterns, and open problems.
+Use [citation_XXXX] tokens inline to reference the claims.
 
-1. For EVERY claim you intend to cite, call verify_citation(chunk_id, paper_id).
-   - verified=True  → assign the next [citation_XXXX] token to this claim
-   - verified=False → discard entirely; never include it
-
-2. Write a synthesis (4–6 paragraphs) covering main themes, key findings,
-   methodological patterns, and open problems.
-   Use [citation_XXXX] tokens inline — never bare arxiv IDs or titles.
-
-3. Respond with ONLY this JSON (no surrounding prose):
+OUTPUT FORMAT — return ONLY this JSON, no prose, no markdown:
 {
-  "synthesis": "<text with [citation_XXXX] tokens inline>",
-  "citations": {
-    "0001": {"paper_id": "...", "arxiv_id": "...", "title": "...", "authors": [...], "chunk_id": "..."},
-    "0002": { ... }
-  },
-  "rejected_count": <integer>
+  "synthesis": "<text with [citation_XXXX] tokens inline>"
 }
 
 RULES:
-- Every token that appears in "synthesis" MUST have an entry in "citations".
-- "citations" must contain ONLY tokens with verify_citation → verified=True.
-- Tokens are assigned sequentially in the order you first verify them.
-- Do not reuse a token for two different claims."""
+- Use the exact citation tokens provided — do not invent new ones.
+- Place each [citation_XXXX] token immediately AFTER the sentence or clause it supports, not before.
+- Never place multiple citation tokens consecutively at the start of a paragraph.
+- Every sentence about a specific finding should reference at least one citation.
+- The synthesis should read as a coherent academic review, not a list of bullet points."""
 
 
 class SynthesisAgent(BaseAgent):
@@ -55,8 +44,9 @@ class SynthesisAgent(BaseAgent):
 
     def __init__(self, job_id: str, budget: LLMCallBudget | None = None):
         super().__init__(job_id, budget=budget)
-        self.tools = [verify_citation_tool, semantic_search_tool]
-        self.tool_map = {**SYNTHESIS_TOOL_MAP, **VECTOR_TOOL_MAP}
+        # No tools needed — verification is done in Python before LLM call.
+        self.tools = []
+        self.tool_map = {}
 
     def run(
         self,
@@ -64,81 +54,136 @@ class SynthesisAgent(BaseAgent):
         claims: list[Claim],
         papers: list[Paper],
     ) -> dict:
-        """
-        Returns:
-          synthesis          str   — text with [citation_XXXX] tokens
-          citations          dict  — {"XXXX": {paper_id, arxiv_id, title, authors, chunk_id}}
-          cited_papers       list  — CitedPaper objects (for backward-compat DB storage)
-          citations_verified int
-          citations_rejected int
-        """
-        claims_payload = [
-            {
-                "paper_id": c.paper_id,
-                "chunk_id": c.chunk_id,
-                "text": c.text,
-                "category": c.category,
-                "confidence": c.confidence,
+        paper_map = {p.id: p for p in papers}
+
+        # Pre-verify claims programmatically — no LLM tool call needed.
+        t0 = time.monotonic()
+        verified_items: list[dict] = []
+        rejected_count = 0
+        for claim in claims:
+            result = verify_citation(claim.chunk_id, claim.paper_id)
+            if result["verified"]:
+                key = f"{len(verified_items) + 1:04d}"
+                paper = paper_map.get(claim.paper_id)
+                verified_items.append({
+                    "key": key,
+                    "claim": claim,
+                    "paper": paper,
+                })
+            else:
+                rejected_count += 1
+
+        self.trace.record_step(
+            job_id=self.job_id,
+            agent=self.agent_name,
+            tool="verify_citations",
+            input_data={"claims_received": len(claims)},
+            output_data={"verified": len(verified_items), "rejected": rejected_count},
+            duration_ms=int((time.monotonic() - t0) * 1000),
+            success=True,
+        )
+
+        # Build citation map from verified items.
+        citations: dict[str, dict] = {}
+        for item in verified_items:
+            paper = item["paper"]
+            citations[item["key"]] = {
+                "paper_id": item["claim"].paper_id,
+                "arxiv_id": paper.arxiv_id if paper else "",
+                "title": paper.title if paper else "",
+                "authors": paper.authors[:3] if paper else [],
+                "chunk_id": item["claim"].chunk_id,
             }
-            for c in claims
-        ]
-        papers_payload = [
-            {"paper_id": p.id, "arxiv_id": p.arxiv_id, "title": p.title, "authors": p.authors[:3]}
-            for p in papers
+
+        if not verified_items:
+            return {
+                "synthesis": (
+                    "No verifiable claims could be extracted from the ingested papers for this topic. "
+                    "This may occur when paper full-text is unavailable and only abstracts were indexed."
+                ),
+                "citations": {},
+                "cited_papers": [],
+                "citations_verified": 0,
+                "citations_rejected": rejected_count,
+            }
+
+        # Provide claims with pre-assigned citation tokens to the LLM.
+        claims_list = [
+            {
+                "citation": f"[citation_{item['key']}]",
+                "text": item["claim"].text,
+                "category": item["claim"].category,
+                "paper_title": item["paper"].title if item["paper"] else "",
+            }
+            for item in verified_items
         ]
 
         messages = [
             {
                 "role": "user",
                 "content": (
-                    f"Synthesize a living review for the topic: '{topic}'\n\n"
-                    f"Papers:\n{json.dumps(papers_payload, indent=2)}\n\n"
-                    f"Claims ({len(claims)} total):\n{json.dumps(claims_payload, indent=2)}\n\n"
-                    f"Call verify_citation for every claim before citing it. "
-                    f"Use [citation_XXXX] tokens for verified citations."
+                    f"Topic: '{topic}'\n\n"
+                    f"Pre-verified claims ({len(claims_list)} total):\n"
+                    f"{json.dumps(claims_list, indent=2)}\n\n"
+                    f"Write a synthesis using the [citation_XXXX] tokens above. "
+                    f"Return ONLY the JSON object."
                 ),
             }
         ]
 
-        response = self._run_loop(messages, system=SYSTEM_PROMPT, max_iterations=30)
+        t1 = time.monotonic()
+        response = self._run_loop(
+            messages,
+            system=SYSTEM_PROMPT,
+            max_iterations=4,
+            force_json_on_completion=True,
+        )
         text = self._extract_text(response)
-        return self._parse_result(text, claims, papers)
+        synthesis = self._parse_synthesis(text)
 
-    # ------------------------------------------------------------------
-
-    def _parse_result(self, text: str, claims: list[Claim], papers: list[Paper]) -> dict:
-        text = re.sub(r'^```(?:json)?\s*', '', text.strip())
-        text = re.sub(r'\s*```$', '', text).strip()
-        data = {}
-        try:
-            data = json.loads(text)
-        except json.JSONDecodeError:
-            match = re.search(r'\{.*?"synthesis".*?\}', text, re.DOTALL)
-            if match:
-                try:
-                    data = json.loads(match.group())
-                except json.JSONDecodeError:
-                    pass
-
-        synthesis = data.get("synthesis", text)
-        citations: dict[str, dict] = data.get("citations", {})
-        rejected_count: int = data.get("rejected_count", 0)
-
-        # Normalise: ensure only tokens that actually appear in the text are kept
-        citations = {
+        # Keep only citation tokens that actually appear in the synthesis text.
+        used_citations = {
             k: v for k, v in citations.items()
             if f"[citation_{k}]" in synthesis
         }
 
-        cited_papers = self._build_cited_papers(citations, papers)
+        cited_papers = self._build_cited_papers(used_citations, papers)
+
+        self.trace.record_step(
+            job_id=self.job_id,
+            agent=self.agent_name,
+            tool="synthesize",
+            input_data={"verified_claims": len(verified_items)},
+            output_data={"citations_used": len(used_citations), "synthesis_chars": len(synthesis)},
+            duration_ms=int((time.monotonic() - t1) * 1000),
+            success=True,
+        )
 
         return {
             "synthesis": synthesis,
-            "citations": citations,
+            "citations": used_citations,
             "cited_papers": cited_papers,
-            "citations_verified": len(citations),
+            "citations_verified": len(used_citations),
             "citations_rejected": rejected_count,
         }
+
+    # ------------------------------------------------------------------
+
+    def _parse_synthesis(self, text: str) -> str:
+        text = re.sub(r'^```(?:json)?\s*', '', text.strip())
+        text = re.sub(r'\s*```$', '', text).strip()
+        try:
+            data = json.loads(text)
+            synthesis = data.get("synthesis", text)
+        except json.JSONDecodeError:
+            match = re.search(r'"synthesis"\s*:\s*"(.*?)"(?:\s*[,}])', text, re.DOTALL)
+            if match:
+                synthesis = match.group(1).replace('\\"', '"').replace('\\n', '\n')
+            else:
+                synthesis = text
+        # Normalise any spaced variants the model emits: [ citation_0002 ] → [citation_0002]
+        synthesis = re.sub(r'\[\s*citation_(\d{4})\s*\]', r'[citation_\1]', synthesis)
+        return synthesis
 
     def _build_cited_papers(
         self,
@@ -146,7 +191,6 @@ class SynthesisAgent(BaseAgent):
         papers: list[Paper],
     ) -> list[CitedPaper]:
         paper_map = {p.id: p for p in papers}
-        # Group chunk_ids by paper_id from the citations map
         paper_chunks: dict[str, set[str]] = {}
         for entry in citations.values():
             pid = entry.get("paper_id", "")

@@ -24,7 +24,7 @@ def search_arxiv(query: str, max_results: int = 5) -> dict:
         "search_query": f"all:{query}",
         "start": 0,
         "max_results": max_results,
-        "sortBy": "submittedDate",
+        "sortBy": "relevance",
         "sortOrder": "descending",
     }
     url = f"{ARXIV_API}?{urllib.parse.urlencode(params)}"
@@ -70,7 +70,11 @@ def fetch_paper(arxiv_id: str) -> dict:
     html_url = ARXIV_HTML_URL.format(arxiv_id=arxiv_id)
     try:
         resp = httpx.get(html_url, timeout=30, follow_redirects=True)
-        if resp.status_code == 200 and len(resp.text) > 5000:
+        # Reject if ar5iv redirected us to the arxiv.org abstract page —
+        # that page only contains navigation HTML, not the paper body.
+        final_url = str(resp.url)
+        stayed_on_ar5iv = "ar5iv" in final_url
+        if resp.status_code == 200 and stayed_on_ar5iv and len(resp.text) > 5000:
             text = _extract_text_from_html(resp.text)
             if len(text) > 2000:
                 return {"arxiv_id": arxiv_id, "text": text, "source": "ar5iv"}

@@ -30,6 +30,10 @@ class ReviewRepository:
         self.session.refresh(row)
         return self._to_model(row)
 
+    def get_by_id(self, review_id: str) -> Review | None:
+        row = self.session.query(ReviewRow).filter_by(id=review_id).first()
+        return self._to_model(row) if row else None
+
     def get_latest_by_topic(self, topic_id: str) -> Review | None:
         row = (
             self.session.query(ReviewRow)

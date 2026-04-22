@@ -31,7 +31,11 @@ export default function HomePage() {
     if (res.ok) setTopics(await res.json());
   };
 
-  useEffect(() => { fetchTopics(); }, []);
+  useEffect(() => {
+    fetchTopics();
+    const interval = setInterval(fetchTopics, 15000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -27,6 +27,11 @@ class ReviewService:
                 return repo.get_latest_by_topic(data.topic_id)
             return repo.create(data)
 
+    def get_by_id(self, review_id: str) -> Review | None:
+        with get_session() as session:
+            repo = ReviewRepository(session)
+            return repo.get_by_id(review_id)
+
     def get_latest(self, topic_id: str) -> Review | None:
         with get_session() as session:
             repo = ReviewRepository(session)

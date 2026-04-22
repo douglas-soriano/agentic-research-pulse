@@ -142,18 +142,22 @@ export default function ReviewPage({ params }: { params: { id: string } }) {
   const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
+    let stopped = false;
     const load = async () => {
       const res = await fetch(`${API}/api/v1/reviews/${params.id}`);
-      if (res.status === 404) { setNotFound(true); setLoading(false); return; }
-      if (res.ok) { setReview(await res.json()); }
+      if (stopped) return;
+      if (res.ok) {
+        setReview(await res.json());
+        setNotFound(false);
+        setLoading(false);
+        return;
+      }
+      if (res.status === 404) { setNotFound(true); }
       setLoading(false);
     };
     load();
-    // Poll every 10 s until we have a review, then slow down
-    const interval = setInterval(() => {
-      if (!review) load();
-    }, 10000);
-    return () => clearInterval(interval);
+    const interval = setInterval(load, 10000);
+    return () => { stopped = true; clearInterval(interval); };
   }, [params.id]);
 
   if (loading) return <p style={{ color: "#718096" }}>Loading review…</p>;

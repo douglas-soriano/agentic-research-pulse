@@ -10,7 +10,7 @@ Also drives the task lifecycle SSE stream:
 import logging
 import time
 
-from app.agents.base import LLMCallBudget
+from app.agents.base import LLMCallBudget, init_llm_log
 
 logger = logging.getLogger(__name__)
 from app.agents.search_agent import SearchAgent
@@ -38,6 +38,7 @@ class Orchestrator:
         stream_service.task_started(self.job_id)
 
         try:
+            init_llm_log(topic_name, self.job_id)
             # One shared budget for the entire job — all agents draw from it.
             budget = LLMCallBudget(settings.max_llm_calls_per_job)
 

@@ -53,11 +53,18 @@ def store_chunks(chunks: list[dict]) -> dict:
     return {"stored": len(chunks)}
 
 
-def semantic_search(query: str, paper_ids: list[str] | None = None, n_results: int = 10) -> dict:
+def semantic_search(query: str = "", paper_ids: list[str] | None = None, n_results: int = 10) -> dict:
     """
     Semantic search over stored chunks.
     Returns chunks with chunk_id, text, paper_id, and distance.
     """
+    if not query:
+        return {
+            "chunks": [],
+            "total": 0,
+            "error": "Missing required argument: query. Call semantic_search(query='your search term', ...).",
+        }
+
     collection = _get_collection()
 
     where = {"paper_id": {"$in": paper_ids}} if paper_ids else None
