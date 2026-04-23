@@ -4,13 +4,31 @@ import Link from "next/link";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+// ── Design tokens (Slack-inspired) ─────────────────────────────────────────
+const C = {
+  bg:       "#1a1d21",
+  surface:  "#222529",
+  card:     "#27292c",
+  cardHi:   "#2e3136",
+  border:   "#414447",
+  borderSub:"#2e3136",
+  textPri:  "#d1d2d3",
+  textSec:  "#9b9b9b",
+  textMut:  "#616061",
+  blue:     "#1d9bd1",
+  blueDark: "#1264a3",
+  green:    "#2bac76",
+  amber:    "#e8a427",
+  red:      "#e8645a",
+} as const;
+
+// ── Types ──────────────────────────────────────────────────────────────────
 interface Topic {
   id: string;
   name: string;
   last_fetched_at: string | null;
   created_at: string;
 }
-
 interface JobResponse {
   id: string;
   name: string;
@@ -18,13 +36,14 @@ interface JobResponse {
   created_at: string;
 }
 
+// ── Page ───────────────────────────────────────────────────────────────────
 export default function HomePage() {
-  const [topics, setTopics] = useState<Topic[]>([]);
-  const [name, setName] = useState("");
-  const [maxPapers, setMaxPapers] = useState(8);
-  const [loading, setLoading] = useState(false);
+  const [topics,    setTopics]    = useState<Topic[]>([]);
+  const [name,      setName]      = useState("");
+  const [maxPapers, setMaxPapers] = useState(5);
+  const [loading,   setLoading]   = useState(false);
   const [lastJobId, setLastJobId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error,     setError]     = useState<string | null>(null);
 
   const fetchTopics = async () => {
     const res = await fetch(`${API}/api/v1/topics`);
@@ -62,102 +81,177 @@ export default function HomePage() {
 
   return (
     <main>
-      <section style={{ marginBottom: "2rem" }}>
-        <h2 style={{ fontSize: "1.1rem", marginBottom: "1rem", color: "#a0aec0" }}>
-          Add Research Topic
-        </h2>
-        <form onSubmit={handleSubmit} style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+      {/* New topic form */}
+      <section style={{ marginBottom: "2.5rem" }}>
+        <Label>New research topic</Label>
+        <form
+          onSubmit={handleSubmit}
+          style={{ display: "flex", gap: "0.625rem", flexWrap: "wrap", marginTop: "0.625rem" }}
+        >
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. RAG for scientific papers"
-            style={inputStyle}
+            style={{
+              flex: 1, minWidth: 220,
+              padding: "0.55rem 0.875rem",
+              background: C.card,
+              border: `1px solid ${C.border}`,
+              borderRadius: 6,
+              color: C.textPri,
+              fontSize: "0.9rem",
+              outline: "none",
+            }}
             disabled={loading}
           />
           <select
             value={maxPapers}
             onChange={(e) => setMaxPapers(Number(e.target.value))}
-            style={{ ...inputStyle, width: 130 }}
+            style={{
+              flex: "none", width: 120,
+              padding: "0.55rem 0.75rem",
+              background: C.card,
+              border: `1px solid ${C.border}`,
+              borderRadius: 6,
+              color: C.textPri,
+              fontSize: "0.9rem",
+            }}
           >
             {[3, 5, 8, 10].map((n) => (
               <option key={n} value={n}>{n} papers</option>
             ))}
           </select>
-          <button type="submit" disabled={loading || !name.trim()} style={btnStyle}>
-            {loading ? "Enqueuing…" : "Start Pipeline"}
+          <button
+            type="submit"
+            disabled={loading || !name.trim()}
+            style={{
+              padding: "0.55rem 1.25rem",
+              background: loading || !name.trim() ? C.card : C.blueDark,
+              color: loading || !name.trim() ? C.textMut : "#fff",
+              border: `1px solid ${loading || !name.trim() ? C.border : C.blueDark}`,
+              borderRadius: 6,
+              cursor: loading || !name.trim() ? "not-allowed" : "pointer",
+              fontSize: "0.9rem",
+              fontWeight: 600,
+              whiteSpace: "nowrap",
+              transition: "background 0.15s",
+            }}
+          >
+            {loading ? "Starting…" : "Run pipeline"}
           </button>
         </form>
-        {error && <p style={{ color: "#fc8181", marginTop: "0.5rem" }}>{error}</p>}
+
+        {error && (
+          <div style={{
+            marginTop: "0.75rem", padding: "0.625rem 0.875rem",
+            background: "#2d1515", border: `1px solid ${C.red}50`,
+            borderRadius: 6, color: C.red, fontSize: "0.85rem",
+          }}>
+            {error}
+          </div>
+        )}
+
         {lastJobId && (
-          <p style={{ color: "#68d391", marginTop: "0.5rem", fontSize: "0.875rem" }}>
-            Pipeline started. <Link href={`/traces/${lastJobId}`} style={{ color: "#63b3ed" }}>View trace →</Link>
-          </p>
+          <div style={{
+            marginTop: "0.75rem", padding: "0.625rem 0.875rem",
+            background: "#122010", border: `1px solid ${C.green}40`,
+            borderRadius: 6, fontSize: "0.85rem", color: C.green,
+            display: "flex", alignItems: "center", gap: "0.625rem",
+          }}>
+            <span className="pulse-live" style={{
+              width: 7, height: 7, borderRadius: "50%",
+              background: C.green, display: "inline-block", flexShrink: 0,
+            }} />
+            Pipeline started —{" "}
+            <Link
+              href={`/traces/${lastJobId}`}
+              style={{ color: C.blue, textDecoration: "none", fontWeight: 600 }}
+            >
+              Watch live trace →
+            </Link>
+          </div>
         )}
       </section>
 
+      {/* Topic list */}
       <section>
-        <h2 style={{ fontSize: "1.1rem", marginBottom: "1rem", color: "#a0aec0" }}>
-          Topics ({topics.length})
-        </h2>
-        {topics.length === 0 && (
-          <p style={{ color: "#718096" }}>No topics yet. Add one above to start.</p>
+        <Label>Topics ({topics.length})</Label>
+        {topics.length === 0 ? (
+          <p style={{ color: C.textMut, fontSize: "0.875rem", marginTop: "0.75rem" }}>
+            No topics yet — add one above to start the pipeline.
+          </p>
+        ) : (
+          <div style={{ display: "grid", gap: "0.5rem", marginTop: "0.625rem" }}>
+            {topics.map((t) => <TopicCard key={t.id} topic={t} />)}
+          </div>
         )}
-        <div style={{ display: "grid", gap: "0.75rem" }}>
-          {topics.map((t) => (
-            <div key={t.id} style={cardStyle}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                <div>
-                  <strong style={{ fontSize: "1rem" }}>{t.name}</strong>
-                  <p style={{ margin: "0.25rem 0 0", fontSize: "0.75rem", color: "#718096" }}>
-                    Added {new Date(t.created_at).toLocaleString()}
-                    {t.last_fetched_at && ` · Last updated ${new Date(t.last_fetched_at).toLocaleString()}`}
-                  </p>
-                </div>
-                <div style={{ display: "flex", gap: "0.5rem" }}>
-                  <Link href={`/review/${t.id}`} style={linkBtnStyle}>Review</Link>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
       </section>
     </main>
   );
 }
 
-const inputStyle: React.CSSProperties = {
-  flex: 1,
-  minWidth: 200,
-  padding: "0.5rem 0.75rem",
-  background: "#1a202c",
-  border: "1px solid #2d3748",
-  borderRadius: 6,
-  color: "#e2e8f0",
-  fontSize: "0.9rem",
-};
+// ── Topic card ─────────────────────────────────────────────────────────────
+function TopicCard({ topic }: { topic: Topic }) {
+  const updated = topic.last_fetched_at ? new Date(topic.last_fetched_at) : null;
 
-const btnStyle: React.CSSProperties = {
-  padding: "0.5rem 1.25rem",
-  background: "#3182ce",
-  color: "white",
-  border: "none",
-  borderRadius: 6,
-  cursor: "pointer",
-  fontSize: "0.9rem",
-};
+  return (
+    <div style={{
+      padding: "0.875rem 1rem",
+      background: C.card,
+      border: `1px solid ${C.border}`,
+      borderRadius: 8,
+      display: "flex", alignItems: "center", gap: "0.875rem",
+    }}>
+      <div style={{
+        width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+        background: updated ? C.green : C.textMut,
+      }} />
 
-const cardStyle: React.CSSProperties = {
-  padding: "1rem",
-  background: "#1a202c",
-  border: "1px solid #2d3748",
-  borderRadius: 8,
-};
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          fontWeight: 600, fontSize: "0.9rem", color: C.textPri,
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        }}>
+          {topic.name}
+        </div>
+        <div style={{ fontSize: "0.72rem", color: C.textMut, marginTop: 2 }}>
+          {updated
+            ? `Updated ${updated.toLocaleDateString()} ${updated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+            : `Added ${new Date(topic.created_at).toLocaleDateString()}`
+          }
+        </div>
+      </div>
 
-const linkBtnStyle: React.CSSProperties = {
-  padding: "0.25rem 0.75rem",
-  background: "#2d3748",
-  color: "#63b3ed",
-  borderRadius: 4,
-  textDecoration: "none",
-  fontSize: "0.8rem",
-};
+      <Link
+        href={`/review/${topic.id}`}
+        style={{
+          padding: "0.35rem 0.875rem",
+          background: C.surface,
+          color: C.blue,
+          border: `1px solid ${C.border}`,
+          borderRadius: 5,
+          textDecoration: "none",
+          fontSize: "0.8rem",
+          fontWeight: 600,
+          whiteSpace: "nowrap",
+          flexShrink: 0,
+        }}
+      >
+        View review
+      </Link>
+    </div>
+  );
+}
+
+// ── Label ──────────────────────────────────────────────────────────────────
+function Label({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{
+      fontSize: "0.7rem", fontWeight: 700,
+      color: C.textSec, letterSpacing: "0.06em",
+      textTransform: "uppercase", marginBottom: "0.5rem",
+    }}>
+      {children}
+    </div>
+  );
+}
