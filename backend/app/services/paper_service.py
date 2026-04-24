@@ -43,9 +43,14 @@ class PaperService:
             else:
                 paper = existing
 
-        # Fetch full text outside the session (network call)
-        result = fetch_paper(paper.arxiv_id)
-        full_text = result.get("text", paper.abstract)
+        # Fetch full text outside the session (network call).
+        # DOI-based IDs (from OpenAlex journal papers) start with "10." —
+        # they have no arXiv preprint, so we skip the fetch and use the abstract.
+        if paper.arxiv_id.startswith("10."):
+            full_text = paper.abstract or ""
+        else:
+            result = fetch_paper(paper.arxiv_id)
+            full_text = result.get("text", paper.abstract)
         if not full_text:
             full_text = paper.abstract
 

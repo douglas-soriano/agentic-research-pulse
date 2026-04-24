@@ -72,25 +72,31 @@ interface Review {
 
 // ── Pipeline labels ────────────────────────────────────────────────────────
 const TOOL_LABEL: Record<string, string> = {
-  plan_queries:          "Planning search strategy",
-  parallel_arxiv_search: "Searching arXiv",
-  semantic_search:       "Reading papers",
-  extract_claims:        "Extracting claims",
-  verify_citations:      "Verifying citation support",
-  synthesize:            "Writing synthesis",
+  plan_queries:    "Planning search strategy",
+  arxiv_search:    "Searching arXiv",
+  openalex_search: "Searching OpenAlex",
+  rank_papers:     "Ranking by relevance",
+  semantic_search: "Reading papers",
+  extract_claims:  "Extracting claims",
+  verify_citations:"Verifying citation support",
+  synthesize:      "Writing synthesis",
 };
 
 const TOOL_COLOR: Record<string, string> = {
-  plan_queries:          C.info,
-  parallel_arxiv_search: C.info,
-  semantic_search:       C.running,
-  extract_claims:        C.running,
-  verify_citations:      C.success,
-  synthesize:            C.success,
+  plan_queries:    C.info,
+  arxiv_search:    C.info,
+  openalex_search: C.info,
+  rank_papers:     C.info,
+  semantic_search: C.running,
+  extract_claims:  C.running,
+  verify_citations:C.success,
+  synthesize:      C.success,
 };
 
 const TOOL_SEQUENCE = [
-  "plan_queries", "parallel_arxiv_search",
+  "plan_queries",
+  "arxiv_search", "openalex_search",
+  "rank_papers",
   "semantic_search", "extract_claims",
   "verify_citations", "synthesize",
 ];
@@ -115,9 +121,22 @@ function describeStep(step: TraceStep): string {
       const n = (out?.queries as string[] | undefined)?.length;
       return n ? `Generated ${n} search queries` : "Generated search queries";
     }
-    case "parallel_arxiv_search": {
-      const n = out?.unique_papers as number | undefined;
-      return n !== undefined ? `Found ${n} candidate papers` : "Searched arXiv";
+    case "arxiv_search":
+    case "openalex_search": {
+      const n = out?.papers_found as number | undefined;
+      const provider = out?.provider as string | undefined;
+      return n !== undefined
+        ? `Found ${n} paper${n !== 1 ? "s" : ""}${provider ? ` on ${provider}` : ""}`
+        : "Searching…";
+    }
+    case "rank_papers": {
+      const sel = out?.selected as number | undefined;
+      const cand = out?.candidates as number | undefined;
+      const cross = out?.cross_provider_matches as number | undefined;
+      const crossStr = cross ? ` · ${cross} cross-provider` : "";
+      return sel !== undefined && cand !== undefined
+        ? `Selected top ${sel} from ${cand} candidates${crossStr}`
+        : "Ranking…";
     }
     case "semantic_search":   return `Retrieved ${(out?.chunks_found as number) ?? "?"} passages`;
     case "extract_claims":    return `${(out?.claims_extracted as number) ?? "?"} claims extracted`;
@@ -309,24 +328,52 @@ function TimelineItem({ item, isLast }: { item: WorkflowItem; isLast: boolean })
         )}
 
         {item.providerFallbacks.length > 0 && (
-          <ul style={{ margin: "0.35rem 0 0", padding: "0 0 0 0.75rem", listStyle: "none" }}>
+          <ul style={{ margin: "0.45rem 0 0", padding: 0, listStyle: "none", display: "grid", gap: "0.35rem", justifyItems: "start" }}>
             {item.providerFallbacks.map((fb, i) => (
               <li
                 key={`${fb.from}-${fb.to}-${i}`}
                 style={{
-                  position: "relative",
-                  fontSize: "0.76rem",
-                  color: C.textSec,
-                  lineHeight: 1.45,
-                  fontStyle: "italic",
-                  padding: "0.06rem 0",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "0.38rem",
+                  maxWidth: "100%",
+                  padding: "0.22rem 0.55rem 0.22rem 0.38rem",
+                  background: "#fff7ed",
+                  border: "1px solid #fdba74",
+                  borderRadius: 7,
+                  color: "#c26a2e",
+                  fontSize: "0.78rem",
+                  lineHeight: 1.35,
+                  boxShadow: "0 1px 0 rgba(194,106,46,0.04)",
                 }}
               >
-                <span style={{ position: "absolute", left: -10, color: C.textMut, fontStyle: "normal" }}>→</span>
-                <span style={{ fontStyle: "normal", fontWeight: 600 }}>{displayProviderName(fb.from)}</span>
-                {" "}was unavailable — continued with{" "}
-                <span style={{ fontStyle: "normal", fontWeight: 600 }}>{displayProviderName(fb.to)}</span>
-                {fb.count > 1 ? ` (${fb.count} LLM calls in this step).` : "."}
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: 18,
+                    height: 18,
+                    borderRadius: 5,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                    background: "#ffedd5",
+                    border: "1px solid #fed7aa",
+                    fontSize: "0.72rem",
+                    lineHeight: 1,
+                  }}
+                >
+                  🤖
+                </span>
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ fontWeight: 700 }}>{displayProviderName(fb.from)}</span>
+                  <span style={{ fontStyle: "italic" }}> was unavailable — continued with </span>
+                  <span style={{ fontWeight: 700 }}>{displayProviderName(fb.to)}</span>
+                  {fb.count > 1 && (
+                    <span style={{ fontStyle: "italic" }}> ({fb.count} LLM calls in this step).</span>
+                  )}
+                  {fb.count <= 1 && "."}
+                </span>
               </li>
             ))}
           </ul>
