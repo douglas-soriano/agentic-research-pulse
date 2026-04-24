@@ -19,7 +19,7 @@ import instructor
 from openai import OpenAI, APIStatusError
 from pydantic import BaseModel
 
-from app.config import settings
+from app.config import settings, ProviderConfig
 from app.services.trace_service import TraceService
 
 logger = logging.getLogger(__name__)
@@ -76,14 +76,16 @@ class BaseAgent:
 
     def __init__(self, job_id: str, budget: LLMCallBudget | None = None):
         self.job_id = job_id
-        _openai = OpenAI(
-            api_key=settings.llm_api_key,
-            base_url=settings.llm_base_url,
-        )
-        self.client = _openai
-        # instructor-patched client for structured output with Pydantic validation.
-        # Mode.JSON sends response_format={"type":"json_object"}, supported by Ollama.
-        self._structured_client = instructor.from_openai(_openai, mode=instructor.Mode.JSON)
+        # Build one (raw_client, instructor_client) pair per provider in the chain.
+        self._provider_clients: list[tuple[ProviderConfig, OpenAI, Any]] = []
+        for p in settings.get_provider_chain():
+            raw = OpenAI(api_key=p.api_key, base_url=p.base_url)
+            instr = instructor.from_openai(raw, mode=instructor.Mode.JSON)
+            self._provider_clients.append((p, raw, instr))
+
+        # Primary provider clients exposed for _run_loop / legacy usage.
+        self.client = self._provider_clients[0][1]
+        self._structured_client = self._provider_clients[0][2]
         self.trace = TraceService()
         self.budget = budget or LLMCallBudget(settings.max_llm_calls_per_job)
         # Each subclass sets these:
@@ -104,9 +106,22 @@ class BaseAgent:
         return (
             "429" in msg
             or "rate limit" in msg
-            or "resource exhausted" in msg
+            # "resource exhausted" excluded — daily quota exhaustion is not transient
             or "503" in msg
         )
+
+    def _is_provider_fatal_error(self, exc: BaseException) -> bool:
+        """True when the provider is permanently unavailable for this job — quota
+        exhausted or auth failure. Triggers a switch to the next provider in the chain.
+        Transient errors (rate limit, 5xx) are NOT fatal: they fail fast without switching."""
+        if isinstance(exc, APIStatusError):
+            if exc.status_code in (401, 403):
+                return True
+            if exc.status_code == 429:
+                msg = str(exc).lower()
+                return "resource exhausted" in msg or "quota" in msg
+        msg = str(exc).lower()
+        return "resource exhausted" in msg or "quota" in msg or "invalid api key" in msg
 
     def _retry_delay(self, exc: BaseException, attempt: int) -> float:
         if isinstance(exc, APIStatusError) and exc.response is not None:
@@ -166,6 +181,7 @@ class BaseAgent:
         messages: list[dict],
         system: str | None = None,
         max_retries: int = 2,
+        phase_tool: str | None = None,
     ) -> BaseModel:
         """
         Single LLM call that returns a validated Pydantic object.
@@ -183,12 +199,45 @@ class BaseAgent:
         for m in messages:
             msgs.append({"role": m["role"], "content": m["content"]})
 
-        return self._structured_client.chat.completions.create(
-            model=settings.llm_model,
-            messages=msgs,
-            response_model=response_model,
-            max_retries=max_retries,
-        )
+        last_exc: Exception | None = None
+        for idx, (p_cfg, _, instr_client) in enumerate(self._provider_clients):
+            try:
+                result = instr_client.chat.completions.create(
+                    model=p_cfg.model,
+                    messages=msgs,
+                    response_model=response_model,
+                    max_retries=max_retries,
+                )
+                self._log_structured(msgs, response_model.__name__, result=result)
+                return result
+            except Exception as exc:
+                last_exc = exc
+                if not self._is_provider_fatal_error(exc):
+                    # Transient error — fail fast, no provider switch.
+                    self._log_structured(msgs, response_model.__name__, error=str(exc))
+                    raise
+                self._log_structured(msgs, response_model.__name__, error=f"[{p_cfg.name}] {exc}")
+                if idx < len(self._provider_clients) - 1:
+                    next_name = self._provider_clients[idx + 1][0].name
+                    logger.warning(
+                        "%s: %s fatal error — switching to %s: %s",
+                        self.agent_name, p_cfg.name, next_name, str(exc)[:120],
+                    )
+                    self.trace.record_step(
+                        job_id=self.job_id,
+                        agent=self.agent_name,
+                        tool="provider_switch",
+                        input_data={
+                            "from": p_cfg.name,
+                            "model": p_cfg.model,
+                            "phase_tool": phase_tool or "",
+                        },
+                        output_data={"to": next_name, "reason": str(exc)[:200]},
+                        duration_ms=0,
+                        success=False,
+                        error=str(exc)[:200],
+                    )
+        raise last_exc  # type: ignore[misc]  — loop always sets last_exc
 
     # ------------------------------------------------------------------
     # Agentic loop
@@ -406,6 +455,37 @@ class BaseAgent:
                 f.write("\n")
         except Exception:
             pass  # logging must never crash the agent
+
+    def _log_structured(
+        self,
+        msgs: list[dict],
+        model_name: str,
+        result: BaseModel | None = None,
+        error: str | None = None,
+    ) -> None:
+        try:
+            ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
+            sep = "=" * 72
+            with open(LLM_LOG_FILE, "a", encoding="utf-8") as f:
+                f.write(f"\n{sep}\n")
+                f.write(f"[{ts}] {self.agent_name}  structured={model_name}  budget={self.budget.used}/{self.budget.limit}\n")
+                f.write(f"{sep}\n")
+                f.write("--- MESSAGES SENT ---\n")
+                for m in msgs:
+                    role = m.get("role", "?").upper()
+                    content = str(m.get("content") or "")
+                    preview = content[:600] + ("…" if len(content) > 600 else "")
+                    f.write(f"[{role}]\n{preview}\n\n")
+                f.write("--- RESPONSE ---\n")
+                if error:
+                    f.write(f"[ERROR] {error[:400]}\n")
+                elif result is not None:
+                    text = result.model_dump_json()
+                    preview = text[:800] + ("…" if len(text) > 800 else "")
+                    f.write(f"[{model_name}]\n{preview}\n")
+                f.write("\n")
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
     # Helpers

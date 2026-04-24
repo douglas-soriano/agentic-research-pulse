@@ -9,11 +9,14 @@ from app.agents.orchestrator import Orchestrator
 
 
 def _retryable_pipeline_error(exc: BaseException) -> bool:
-    """Only retry transient API / overload errors — not validation bugs or bad input."""
+    """Retry only on true transient infrastructure failures (5xx).
+    LLM 429s (rate limit or quota) are handled gracefully inside each agent and
+    should never reach this level. Treating quota exhaustion as retryable here
+    would silently burn quota across all Celery retries."""
     if isinstance(exc, APIStatusError):
-        return exc.status_code in (429, 500, 503)
+        return exc.status_code in (500, 503)
     text = str(exc).lower()
-    return "429" in text or "rate limit" in text or "503" in text
+    return "503" in text or "service unavailable" in text
 
 
 @celery_app.task(

@@ -168,25 +168,17 @@ class SynthesisAgent(BaseAgent):
         Call LLM with Pydantic validation via instructor.
         On schema mismatch (e.g. missing 'synthesis' key, empty string), the
         validation error is automatically fed back and the model self-corrects.
+        Exceptions propagate — the orchestrator handles them and calls task_failed.
         """
-        try:
-            output: SynthesisOutput = self._run_structured(
-                SynthesisOutput,
-                messages=messages,
-                system=SYSTEM_PROMPT,
-                max_retries=2,
-            )
-            synthesis = output.synthesis
-        except Exception as exc:
-            import logging
-            logging.getLogger(__name__).warning(
-                "SynthesisAgent: structured output failed after retries (%s) — empty synthesis", exc
-            )
-            synthesis = ""
-
+        output: SynthesisOutput = self._run_structured(
+            SynthesisOutput,
+            messages=messages,
+            system=SYSTEM_PROMPT,
+            max_retries=2,
+            phase_tool="synthesize",
+        )
         # Normalise spaced citation tokens the model sometimes emits: [ citation_0002 ] → [citation_0002]
-        synthesis = re.sub(r'\[\s*citation_(\d{4})\s*\]', r'[citation_\1]', synthesis)
-        return synthesis
+        return re.sub(r'\[\s*citation_(\d{4})\s*\]', r'[citation_\1]', output.synthesis)
 
     def _build_cited_papers(
         self,

@@ -199,7 +199,11 @@ class Orchestrator:
 
             # Phase 4: Synthesise with citation grounding
             synthesis_result = {
-                "synthesis": "",
+                "synthesis": (
+                    "No claims could be extracted from the retrieved papers. "
+                    "The papers may not contain enough structured content, "
+                    "or try a more specific search term."
+                ),
                 "citations": {},
                 "cited_papers": [],
                 "citations_verified": 0,
