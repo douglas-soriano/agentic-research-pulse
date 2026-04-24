@@ -501,8 +501,8 @@ export default function TracePage({ params }: { params: { jobId: string } }) {
         </div>
       )}
 
-      {/* Step breakdown */}
-      {steps.length > 0 && (
+      {/* Step breakdown — only shown after completion */}
+      {(isDone || isFailed) && steps.length > 0 && (
         <div>
           <div style={{
             display: "flex", alignItems: "center", gap: "0.5rem",
@@ -514,20 +514,10 @@ export default function TracePage({ params }: { params: { jobId: string } }) {
             }}>
               Agent steps ({steps.length})
             </span>
-            {status === "started" && (
-              <span className="pulse-live" style={{
-                width: 6, height: 6, borderRadius: "50%",
-                background: C.blue, display: "inline-block",
-              }} />
-            )}
           </div>
-
-          {isDone || isFailed
-            ? PHASES.map(phase => (
-                <PhaseAccordion key={phase.label} phase={phase} steps={steps} />
-              ))
-            : steps.map((s, i) => <StepRow key={i} step={s} idx={i} />)
-          }
+          {PHASES.map(phase => (
+            <PhaseAccordion key={phase.label} phase={phase} steps={steps} />
+          ))}
         </div>
       )}
     </main>

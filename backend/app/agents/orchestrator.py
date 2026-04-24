@@ -87,6 +87,35 @@ class Orchestrator:
                 if paper:
                     papers.append(paper)
 
+            embedded = [p for p in papers if p.embedded]
+            if not embedded:
+                logger.warning("Orchestrator: SearchAgent returned %d papers but none could be embedded.", len(papers))
+                synthesis_result = {
+                    "synthesis": "Papers were retrieved but none could be embedded for this topic. "
+                                 "This may happen when arXiv returns unrelated results for an unknown search term.",
+                    "citations": {},
+                    "cited_papers": [],
+                    "citations_verified": 0,
+                    "citations_rejected": 0,
+                }
+                review = self.review_service.save(
+                    ReviewCreate(
+                        topic_id=topic_id, topic_name=topic_name,
+                        synthesis=synthesis_result["synthesis"],
+                        citations={}, cited_papers=[],
+                        papers_processed=0, claims_extracted=0,
+                        citations_verified=0, citations_rejected=0,
+                    )
+                )
+                total_ms = int((time.monotonic() - start_wall) * 1000)
+                stats = {"total_duration_ms": total_ms, "papers_processed": 0,
+                         "claims_extracted": 0, "citations_verified": 0, "citations_rejected": 0}
+                self.trace.complete(self.job_id, stats)
+                stream_service.task_done(self.job_id, review_id=review.id, stats=stats)
+                return {"review_id": review.id, **stats}
+
+            papers = embedded
+
             # Phase 3: Extract claims — reuse same agent instance across papers
             # so the shared budget is honoured without re-instantiating.
             extract_agent = ExtractAgent(self.job_id, budget=budget)

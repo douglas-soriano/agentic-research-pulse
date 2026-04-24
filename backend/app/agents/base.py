@@ -13,9 +13,11 @@ import os
 import random
 import time
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Type
 
+import instructor
 from openai import OpenAI, APIStatusError
+from pydantic import BaseModel
 
 from app.config import settings
 from app.services.trace_service import TraceService
@@ -74,10 +76,14 @@ class BaseAgent:
 
     def __init__(self, job_id: str, budget: LLMCallBudget | None = None):
         self.job_id = job_id
-        self.client = OpenAI(
+        _openai = OpenAI(
             api_key=settings.llm_api_key,
             base_url=settings.llm_base_url,
         )
+        self.client = _openai
+        # instructor-patched client for structured output with Pydantic validation.
+        # Mode.JSON sends response_format={"type":"json_object"}, supported by Ollama.
+        self._structured_client = instructor.from_openai(_openai, mode=instructor.Mode.JSON)
         self.trace = TraceService()
         self.budget = budget or LLMCallBudget(settings.max_llm_calls_per_job)
         # Each subclass sets these:
@@ -149,6 +155,40 @@ class BaseAgent:
                     str(exc)[:120], attempt + 1, max_attempts, delay,
                 )
                 time.sleep(delay)
+
+    # ------------------------------------------------------------------
+    # Structured output (instructor + Pydantic)
+    # ------------------------------------------------------------------
+
+    def _run_structured(
+        self,
+        response_model: Type[BaseModel],
+        messages: list[dict],
+        system: str | None = None,
+        max_retries: int = 2,
+    ) -> BaseModel:
+        """
+        Single LLM call that returns a validated Pydantic object.
+
+        If the model's output fails Pydantic validation, instructor automatically
+        sends the validation error back to the LLM as a corrective prompt and retries
+        up to max_retries times before raising. Each initial call counts against the
+        budget; corrective retries do not (they are bounded and short).
+        """
+        self.budget.consume(self.agent_name)
+
+        msgs: list[dict] = []
+        if system:
+            msgs.append({"role": "system", "content": system})
+        for m in messages:
+            msgs.append({"role": m["role"], "content": m["content"]})
+
+        return self._structured_client.chat.completions.create(
+            model=settings.llm_model,
+            messages=msgs,
+            response_model=response_model,
+            max_retries=max_retries,
+        )
 
     # ------------------------------------------------------------------
     # Agentic loop
@@ -314,7 +354,7 @@ class BaseAgent:
                     error=str(exc),
                 )
                 if attempt < settings.max_tool_retries:
-                    time.sleep(2 ** attempt)
+                    time.sleep(min(2 ** attempt + random.uniform(0, 1.0), 30))
 
         return {
             "role": "tool",

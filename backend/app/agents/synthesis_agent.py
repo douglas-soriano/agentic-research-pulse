@@ -13,6 +13,7 @@ import re
 import time
 
 from app.agents.base import BaseAgent, LLMCallBudget
+from app.models.agent_outputs import SynthesisOutput
 from app.models.claim import Claim
 from app.models.paper import Paper
 from app.models.review import CitedPaper
@@ -132,14 +133,7 @@ class SynthesisAgent(BaseAgent):
         ]
 
         t1 = time.monotonic()
-        response = self._run_loop(
-            messages,
-            system=SYSTEM_PROMPT,
-            max_iterations=4,
-            force_json_on_completion=True,
-        )
-        text = self._extract_text(response)
-        synthesis = self._parse_synthesis(text)
+        synthesis = self._synthesize_with_structured(messages)
 
         # Keep only citation tokens that actually appear in the synthesis text.
         used_citations = {
@@ -169,19 +163,28 @@ class SynthesisAgent(BaseAgent):
 
     # ------------------------------------------------------------------
 
-    def _parse_synthesis(self, text: str) -> str:
-        text = re.sub(r'^```(?:json)?\s*', '', text.strip())
-        text = re.sub(r'\s*```$', '', text).strip()
+    def _synthesize_with_structured(self, messages: list[dict]) -> str:
+        """
+        Call LLM with Pydantic validation via instructor.
+        On schema mismatch (e.g. missing 'synthesis' key, empty string), the
+        validation error is automatically fed back and the model self-corrects.
+        """
         try:
-            data = json.loads(text)
-            synthesis = data.get("synthesis", text)
-        except json.JSONDecodeError:
-            match = re.search(r'"synthesis"\s*:\s*"(.*?)"(?:\s*[,}])', text, re.DOTALL)
-            if match:
-                synthesis = match.group(1).replace('\\"', '"').replace('\\n', '\n')
-            else:
-                synthesis = text
-        # Normalise any spaced variants the model emits: [ citation_0002 ] → [citation_0002]
+            output: SynthesisOutput = self._run_structured(
+                SynthesisOutput,
+                messages=messages,
+                system=SYSTEM_PROMPT,
+                max_retries=2,
+            )
+            synthesis = output.synthesis
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning(
+                "SynthesisAgent: structured output failed after retries (%s) — empty synthesis", exc
+            )
+            synthesis = ""
+
+        # Normalise spaced citation tokens the model sometimes emits: [ citation_0002 ] → [citation_0002]
         synthesis = re.sub(r'\[\s*citation_(\d{4})\s*\]', r'[citation_\1]', synthesis)
         return synthesis
 

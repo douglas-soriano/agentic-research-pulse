@@ -11,10 +11,10 @@ in ChromaDB, which caused all downstream citation verification to fail.
 """
 import json
 import logging
-import re
 import time
 
 from app.agents.base import BaseAgent, LLMCallBudget
+from app.models.agent_outputs import ClaimsOutput
 from app.models.paper import Paper
 from app.models.claim import Claim
 from app.tools.vector_tools import semantic_search
@@ -89,14 +89,7 @@ class ExtractAgent(BaseAgent):
         ]
 
         t1 = time.monotonic()
-        response = self._run_loop(
-            messages,
-            system=SYSTEM_PROMPT,
-            max_iterations=3,
-            force_json_on_completion=True,
-        )
-        text = self._extract_text(response)
-        claims = self._parse_claims(text, chunks, paper)
+        claims = self._extract_with_structured(messages, chunks, paper)
 
         self.trace.record_step(
             job_id=self.job_id,
@@ -106,6 +99,47 @@ class ExtractAgent(BaseAgent):
             output_data={"claims_extracted": len(claims)},
             duration_ms=int((time.monotonic() - t1) * 1000),
             success=True,
+        )
+        return claims
+
+    def _extract_with_structured(
+        self, messages: list[dict], chunks: list[dict], paper: Paper
+    ) -> list[Claim]:
+        """Call LLM with Pydantic validation via instructor, map indices to real chunk_ids."""
+        try:
+            output: ClaimsOutput = self._run_structured(
+                ClaimsOutput,
+                messages=messages,
+                system=SYSTEM_PROMPT,
+                max_retries=2,
+            )
+        except Exception as exc:
+            logger.warning(
+                "ExtractAgent: structured extraction failed for %s (%s) — returning 0 claims",
+                paper.arxiv_id, exc,
+            )
+            return []
+
+        claims: list[Claim] = []
+        for item in output.claims:
+            if item.index < 0 or item.index >= len(chunks):
+                logger.debug(
+                    "ExtractAgent: index %d out of range (chunks: %d) — skipped",
+                    item.index, len(chunks),
+                )
+                continue
+            chunk = chunks[item.index]
+            claims.append(Claim(
+                paper_id=paper.id,
+                chunk_id=chunk["chunk_id"],
+                text=item.text,
+                confidence=item.confidence,
+                category=item.category,
+            ))
+
+        logger.info(
+            "ExtractAgent: extracted %d valid claims from paper %s",
+            len(claims), paper.arxiv_id,
         )
         return claims
 
@@ -135,47 +169,3 @@ class ExtractAgent(BaseAgent):
         logger.debug("ExtractAgent: found %d unique chunks for paper %s", len(chunks), paper.arxiv_id)
         return chunks
 
-    def _parse_claims(self, text: str, chunks: list[dict], paper: Paper) -> list[Claim]:
-        text = re.sub(r'^```(?:json)?\s*', '', text.strip())
-        text = re.sub(r'\s*```$', '', text).strip()
-
-        data: dict = {}
-        try:
-            data = json.loads(text)
-        except json.JSONDecodeError:
-            match = re.search(r'\{.*"claims".*\}', text, re.DOTALL)
-            if match:
-                try:
-                    data = json.loads(match.group())
-                except json.JSONDecodeError:
-                    pass
-
-        claims: list[Claim] = []
-        for c in data.get("claims", []):
-            idx = c.get("index")
-            claim_text = c.get("text", "").strip()
-            if idx is None or not claim_text:
-                continue
-            if not isinstance(idx, int) or idx < 0 or idx >= len(chunks):
-                logger.debug(
-                    "ExtractAgent: claim index %s out of range (chunks: %d) — skipped",
-                    idx, len(chunks),
-                )
-                continue
-            # chunk_id comes from Python's own search — never from the model.
-            chunk = chunks[idx]
-            claims.append(
-                Claim(
-                    paper_id=paper.id,
-                    chunk_id=chunk["chunk_id"],
-                    text=claim_text,
-                    confidence=float(c.get("confidence", 0.8)),
-                    category=c.get("category", "finding"),
-                )
-            )
-
-        logger.info(
-            "ExtractAgent: extracted %d valid claims from paper %s",
-            len(claims), paper.arxiv_id,
-        )
-        return claims

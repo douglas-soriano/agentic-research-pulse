@@ -83,7 +83,12 @@ def fetch_paper(arxiv_id: str) -> dict:
 
     params = {"id_list": arxiv_id, "max_results": 1}
     url = f"{ARXIV_API}?{urllib.parse.urlencode(params)}"
-    resp = httpx.get(url, timeout=30)
+    for attempt in range(4):
+        resp = httpx.get(url, timeout=30)
+        if resp.status_code != 429:
+            break
+        wait = int(resp.headers.get("Retry-After", min(15 * 2 ** attempt, 120)))
+        time.sleep(wait)
     resp.raise_for_status()
     feed = feedparser.parse(resp.text)
     if feed.entries:
