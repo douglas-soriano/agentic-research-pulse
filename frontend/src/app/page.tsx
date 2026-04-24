@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -33,11 +34,11 @@ interface JobResponse {
 }
 
 export default function HomePage() {
+  const router = useRouter();
   const [topics,    setTopics]    = useState<Topic[]>([]);
   const [name,      setName]      = useState("");
   const [maxPapers, setMaxPapers] = useState(5);
   const [loading,   setLoading]   = useState(false);
-  const [lastJobId, setLastJobId] = useState<string | null>(null);
   const [error,     setError]     = useState<string | null>(null);
 
   const fetchTopics = async () => {
@@ -56,7 +57,6 @@ export default function HomePage() {
     if (!name.trim()) return;
     setLoading(true);
     setError(null);
-    setLastJobId(null);
     try {
       const res = await fetch(`${API}/api/v1/topics`, {
         method: "POST",
@@ -65,9 +65,7 @@ export default function HomePage() {
       });
       if (!res.ok) throw new Error(await res.text());
       const data: JobResponse = await res.json();
-      setLastJobId(data.job_id);
-      setName("");
-      await fetchTopics();
+      router.push(`/research/${data.id}${data.job_id ? `?job=${data.job_id}` : ""}`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
@@ -160,26 +158,6 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* Success notification */}
-        {lastJobId && (
-          <div className="fade-in" style={{
-            marginTop: "0.625rem", padding: "0.625rem 1rem",
-            background: "#f0faf6", border: `1px solid ${C.success}30`,
-            borderRadius: 8, fontSize: "0.83rem", color: C.success,
-            display: "flex", alignItems: "center", gap: "0.5rem",
-          }}>
-            <span className="pulse-live" style={{
-              width: 7, height: 7, borderRadius: "50%",
-              background: C.success, display: "inline-block", flexShrink: 0,
-            }} />
-            Pipeline started —{" "}
-            <Link href={`/traces/${lastJobId}`} style={{
-              color: C.accent, textDecoration: "none", fontWeight: 600,
-            }}>
-              Watch live →
-            </Link>
-          </div>
-        )}
       </form>
 
       {/* ── Topics list ──────────────────────────────────────────────── */}
@@ -246,7 +224,7 @@ function TopicCard({ topic }: { topic: Topic }) {
 
       {/* Action */}
       <Link
-        href={`/review/${topic.id}`}
+        href={`/research/${topic.id}`}
         style={{
           padding: "0.35rem 0.75rem",
           background: hasData ? "#f0faf6" : "#f5f5f3",
@@ -258,7 +236,7 @@ function TopicCard({ topic }: { topic: Topic }) {
           whiteSpace: "nowrap", flexShrink: 0,
         }}
       >
-        {hasData ? "View review" : "No review yet"}
+        {hasData ? "View research" : "Pending…"}
       </Link>
     </div>
   );
