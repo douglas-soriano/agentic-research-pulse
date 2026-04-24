@@ -112,6 +112,7 @@ class ExtractAgent(BaseAgent):
                 messages=messages,
                 system=SYSTEM_PROMPT,
                 max_retries=2,
+                phase_tool="extract_claims",
             )
         except Exception as exc:
             logger.warning(

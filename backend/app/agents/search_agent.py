@@ -134,6 +134,7 @@ class SearchAgent(BaseAgent):
                 }],
                 system=QUERY_SYSTEM,
                 max_retries=2,
+                phase_tool="plan_queries",
             )
             return result.queries
         except Exception as exc:

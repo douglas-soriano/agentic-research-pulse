@@ -95,6 +95,19 @@ const TOOL_SEQUENCE = [
   "verify_citations", "synthesize",
 ];
 
+/** Pretty labels for provider names stored in trace steps */
+const PROVIDER_DISPLAY: Record<string, string> = {
+  gemini: "Gemini",
+  chatgpt: "ChatGPT",
+  openai: "ChatGPT",
+  local: "Local (Ollama)",
+};
+
+function displayProviderName(name: string): string {
+  const k = name.toLowerCase();
+  return PROVIDER_DISPLAY[k] ?? name;
+}
+
 function describeStep(step: TraceStep): string {
   const out = step.output as Record<string, unknown>;
   switch (step.tool) {
@@ -123,10 +136,50 @@ function nestedItems(step: TraceStep): string[] {
 
 type StepStatus = "done" | "running" | "failed" | "pending";
 
+/** When `phase_tool` is absent on older traces, infer the pipeline step from the agent. */
+const AGENT_TO_PHASE_TOOL: Record<string, string> = {
+  search_agent: "plan_queries",
+  extract_agent: "extract_claims",
+  synthesis_agent: "synthesize",
+};
+
+function phaseToolForProviderStep(s: TraceStep): string {
+  const pt = s.input?.phase_tool;
+  if (typeof pt === "string" && pt.length > 0) return pt;
+  return AGENT_TO_PHASE_TOOL[s.agent] ?? "";
+}
+
+interface ProviderFallbackSummary {
+  from: string;
+  to: string;
+  count: number;
+}
+
+/** One line per distinct from→to per phase; count merges repeated switches (e.g. per-paper LLM calls). */
+function providerFallbacksForPhase(
+  allSteps: TraceStep[],
+  toolId: string,
+): ProviderFallbackSummary[] {
+  const relevant = allSteps.filter(
+    s => s.tool === "provider_switch" && phaseToolForProviderStep(s) === toolId,
+  );
+  const byPair = new Map<string, ProviderFallbackSummary>();
+  for (const s of relevant) {
+    const from = String(s.input?.from ?? "");
+    const to = String(s.output?.to ?? "");
+    const key = `${from}\0${to}`;
+    const cur = byPair.get(key);
+    if (cur) cur.count += 1;
+    else byPair.set(key, { from, to, count: 1 });
+  }
+  return [...byPair.values()];
+}
+
 interface WorkflowItem {
   id: string; label: string; techLabel: string; color: string;
   steps: TraceStep[]; status: StepStatus;
   description: string; nested: string[]; totalMs: number;
+  providerFallbacks: ProviderFallbackSummary[];
 }
 
 function buildWorkflow(steps: TraceStep[], isLive: boolean): WorkflowItem[] {
@@ -191,6 +244,7 @@ function buildWorkflow(steps: TraceStep[], isLive: boolean): WorkflowItem[] {
       steps: ts, status, description,
       nested: last ? nestedItems(last) : [],
       totalMs,
+      providerFallbacks: providerFallbacksForPhase(steps, tool),
     };
   });
 }
@@ -252,6 +306,30 @@ function TimelineItem({ item, isLast }: { item: WorkflowItem; isLast: boolean })
           <p style={{ margin: "0.15rem 0 0", fontSize: "0.8rem", color: isPending ? C.textMut : C.textSec, lineHeight: 1.4 }}>
             {item.description}
           </p>
+        )}
+
+        {item.providerFallbacks.length > 0 && (
+          <ul style={{ margin: "0.35rem 0 0", padding: "0 0 0 0.75rem", listStyle: "none" }}>
+            {item.providerFallbacks.map((fb, i) => (
+              <li
+                key={`${fb.from}-${fb.to}-${i}`}
+                style={{
+                  position: "relative",
+                  fontSize: "0.76rem",
+                  color: C.textSec,
+                  lineHeight: 1.45,
+                  fontStyle: "italic",
+                  padding: "0.06rem 0",
+                }}
+              >
+                <span style={{ position: "absolute", left: -10, color: C.textMut, fontStyle: "normal" }}>→</span>
+                <span style={{ fontStyle: "normal", fontWeight: 600 }}>{displayProviderName(fb.from)}</span>
+                {" "}was unavailable — continued with{" "}
+                <span style={{ fontStyle: "normal", fontWeight: 600 }}>{displayProviderName(fb.to)}</span>
+                {fb.count > 1 ? ` (${fb.count} LLM calls in this step).` : "."}
+              </li>
+            ))}
+          </ul>
         )}
 
         {/* Generated queries as sub-bullets */}
@@ -433,6 +511,7 @@ function WaitingDots() {
 
 // ── Synthesis block ────────────────────────────────────────────────────────
 function SynthesisBlock({ review }: { review: Review }) {
+  const hasContent = review.synthesis && review.synthesis.trim().length > 0;
   return (
     <div className="fade-in">
         {/* Synthesis text */}
@@ -441,7 +520,7 @@ function SynthesisBlock({ review }: { review: Review }) {
           border: `1px solid ${C.border}`,
           borderRadius: 14,
           padding: "1.375rem 1.5rem",
-          lineHeight: 1.9, fontSize: "0.9rem", color: C.text,
+          lineHeight: 1.9, fontSize: "0.9rem", color: hasContent ? C.text : C.textMut,
           boxShadow: "0 2px 12px rgba(0,0,0,0.04)",
           whiteSpace: "pre-wrap",
           overflowWrap: "break-word",
@@ -449,7 +528,10 @@ function SynthesisBlock({ review }: { review: Review }) {
           minWidth: 0,
           marginBottom: review.cited_papers.length > 0 ? "1rem" : 0,
         }}>
-          <SynthesisText text={review.synthesis} citations={review.citations} />
+          {hasContent
+            ? <SynthesisText text={review.synthesis} citations={review.citations} />
+            : <span>No synthesis was generated for this topic.</span>
+          }
           <p style={{ margin: "0.75rem 0 0", fontSize: "0.68rem", color: C.textMut }}>
             Hover a numbered badge to preview the source · click to open on arXiv
           </p>

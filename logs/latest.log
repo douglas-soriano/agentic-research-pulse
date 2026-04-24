@@ -1,5 +1,621 @@
 ========================================================================
-PIPELINE START: H²O
-Job ID:         b84d66c0-dbff-49c3-86c3-da085adbe869
-Started at:     2026-04-24 05:24:26 UTC
+PIPELINE START: GPT increases kids development
+Job ID:         8c73bd63-4e58-44d4-b4d7-4233c76c0167
+Started at:     2026-04-24 21:14:12 UTC
 ========================================================================
+
+========================================================================
+[21:14:14] search_agent  structured=QueryPlan  budget=1/60
+========================================================================
+--- MESSAGES SENT ---
+[SYSTEM]
+You are a scientific literature search specialist.
+
+Given a research topic, produce 3 diverse arXiv search queries that cover different angles:
+- Query 1: core methodology / algorithms / techniques
+- Query 2: application domains / use cases / systems
+- Query 3: evaluation / benchmarks / surveys / limitations
+
+Return ONLY this JSON — no prose, no markdown:
+{"queries": ["<query 1>", "<query 2>", "<query 3>"]}
+
+Each query should use different descriptive keywords to maximise paper coverage.
+
+CRITICAL RULES — violating any of these will cause the search to fail:
+- Use ONLY descriptive keywords (e.…
+
+[USER]
+Topic: GPT increases kids development
+
+Generate 3 diverse arXiv search queries. Return JSON only.
+
+--- RESPONSE ---
+[QueryPlan]
+{"queries":["GPT language models education child development","large language models learning applications children","GPT assessment tools pedagogical limitations children"]}
+
+
+========================================================================
+[21:14:45] extract_agent  structured=ClaimsOutput  budget=2/60
+========================================================================
+--- MESSAGES SENT ---
+[SYSTEM]
+You are a scientific claim extraction assistant.
+
+You will receive a list of text chunks from a research paper, each labeled with an index number.
+
+For each chunk that contains meaningful scientific content (findings, methods, contributions, or limitations),
+write a concise 1–2 sentence claim summarising the key point.
+
+Skip chunks that are:
+- Navigation text, headers, or HTML boilerplate
+- Reference lists or citations only
+- Very short or uninformative
+
+Return ONLY this JSON — no prose, no markdown:
+{"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
+
+[USER]
+Paper: Understanding Factors that Shape Children's Long Term Engagement with an In-Home Learning Companion Robot
+Authors: Bengisu Cagiltay, Nathan White, Rabia Ibtasar
+Abstract: Social robots are emerging as learning companions for children, and research shows that they facilitate the development of interest and learning even through brief interactions. However, little is known about how such technologies might support these goals in authentic environments over long-term pe
+
+Chunks (6 total):
+[
+  {
+    "index": 0,
+    "text": "[2205.09052] Understanding Factors that Shape Children\u2019s Long …
+
+--- RESPONSE ---
+[ClaimsOutput]
+{"claims":[{"index":3,"text":"A four-week study revealed that children find it challenging to adhere to strict routines when interacting with a learning companion robot in real-world settings.","category":"finding","confidence":0.9},{"index":4,"text":"Life events such as vacations, family visits, and extracurricular activities significantly impacted children's ability to maintain regular interactions with the robot during the study.","category":"finding","confidence":0.85},{"index":5,"text":"Thematic analysis, following Clarke and Braun's guidelines, was used to identify factors influencing children's long-term engagement with the robot, involving data familiarization, transcription review, and interaction log extraction.","category":"method","confidence":0.9}]}
+
+
+========================================================================
+[21:14:50] extract_agent  structured=ClaimsOutput  budget=3/60
+========================================================================
+--- MESSAGES SENT ---
+[SYSTEM]
+You are a scientific claim extraction assistant.
+
+You will receive a list of text chunks from a research paper, each labeled with an index number.
+
+For each chunk that contains meaningful scientific content (findings, methods, contributions, or limitations),
+write a concise 1–2 sentence claim summarising the key point.
+
+Skip chunks that are:
+- Navigation text, headers, or HTML boilerplate
+- Reference lists or citations only
+- Very short or uninformative
+
+Return ONLY this JSON — no prose, no markdown:
+{"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
+
+[USER]
+Paper: Exploring Children's Preferences for Taking Care of a Social Robot
+Authors: Bengisu Cagiltay, Joseph Michaelis, Sarah Sebo
+Abstract: Research in child-robot interactions suggests that engaging in "care-taking" of a social robot, such as tucking the robot in at night, can strengthen relationships formed between children and robots. In this work, we aim to better understand and explore the design space of caretaking activities with
+
+Chunks (6 total):
+[
+  {
+    "index": 0,
+    "text": "[2205.09055] Exploring Children\u2019s Preferences for Taking Care of a Social Robot Exploring Children\u…
+
+--- RESPONSE ---
+[ERROR] [gemini] <failed_attempts>
+
+<generation number="1">
+<exception>
+    Error code: 429 - [{'error': {'code': 429, 'message': 'Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details.', 'status': 'RESOURCE_EXHAUSTED'}}]
+</exception>
+<completion>
+    None
+</completion>
+</generation>
+
+<generation number="2">
+<excep
+
+
+========================================================================
+[21:14:58] extract_agent  structured=ClaimsOutput  budget=3/60
+========================================================================
+--- MESSAGES SENT ---
+[SYSTEM]
+You are a scientific claim extraction assistant.
+
+You will receive a list of text chunks from a research paper, each labeled with an index number.
+
+For each chunk that contains meaningful scientific content (findings, methods, contributions, or limitations),
+write a concise 1–2 sentence claim summarising the key point.
+
+Skip chunks that are:
+- Navigation text, headers, or HTML boilerplate
+- Reference lists or citations only
+- Very short or uninformative
+
+Return ONLY this JSON — no prose, no markdown:
+{"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
+
+[USER]
+Paper: Exploring Children's Preferences for Taking Care of a Social Robot
+Authors: Bengisu Cagiltay, Joseph Michaelis, Sarah Sebo
+Abstract: Research in child-robot interactions suggests that engaging in "care-taking" of a social robot, such as tucking the robot in at night, can strengthen relationships formed between children and robots. In this work, we aim to better understand and explore the design space of caretaking activities with
+
+Chunks (6 total):
+[
+  {
+    "index": 0,
+    "text": "[2205.09055] Exploring Children\u2019s Preferences for Taking Care of a Social Robot Exploring Children\u…
+
+--- RESPONSE ---
+[ERROR] [chatgpt] <failed_attempts>
+
+<generation number="1">
+<exception>
+    Error code: 429 - {'error': {'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.', 'type': 'insufficient_quota', 'param': None, 'code': 'insufficient_quota'}}
+</exception>
+<comple
+
+
+========================================================================
+[21:15:16] extract_agent  structured=ClaimsOutput  budget=3/60
+========================================================================
+--- MESSAGES SENT ---
+[SYSTEM]
+You are a scientific claim extraction assistant.
+
+You will receive a list of text chunks from a research paper, each labeled with an index number.
+
+For each chunk that contains meaningful scientific content (findings, methods, contributions, or limitations),
+write a concise 1–2 sentence claim summarising the key point.
+
+Skip chunks that are:
+- Navigation text, headers, or HTML boilerplate
+- Reference lists or citations only
+- Very short or uninformative
+
+Return ONLY this JSON — no prose, no markdown:
+{"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
+
+[USER]
+Paper: Exploring Children's Preferences for Taking Care of a Social Robot
+Authors: Bengisu Cagiltay, Joseph Michaelis, Sarah Sebo
+Abstract: Research in child-robot interactions suggests that engaging in "care-taking" of a social robot, such as tucking the robot in at night, can strengthen relationships formed between children and robots. In this work, we aim to better understand and explore the design space of caretaking activities with
+
+Chunks (6 total):
+[
+  {
+    "index": 0,
+    "text": "[2205.09055] Exploring Children\u2019s Preferences for Taking Care of a Social Robot Exploring Children\u…
+
+--- RESPONSE ---
+[ClaimsOutput]
+{"claims":[{"index":1,"text":"Engaging in 'care-taking' of a social robot, such as tucking it in at night, can strengthen relationships formed between children and robots.","category":"finding","confidence":0.9},{"index":4,"text":"Caretaking tasks may serve as an effective mechanism to promote engagement with social robots and provide early evidence of the types of activities that may be most conducive to connection making between a child and a robot.","category":"finding","confidence":0.85},{"index":5,"text":"Designing social robots for sustained long-term interactions with children is crucial but the current literature lacks insights into how caretaking might be formed in home settings.","category":"finding","confidence":0.8}]}
+
+
+========================================================================
+[21:15:21] extract_agent  structured=ClaimsOutput  budget=4/60
+========================================================================
+--- MESSAGES SENT ---
+[SYSTEM]
+You are a scientific claim extraction assistant.
+
+You will receive a list of text chunks from a research paper, each labeled with an index number.
+
+For each chunk that contains meaningful scientific content (findings, methods, contributions, or limitations),
+write a concise 1–2 sentence claim summarising the key point.
+
+Skip chunks that are:
+- Navigation text, headers, or HTML boilerplate
+- Reference lists or citations only
+- Very short or uninformative
+
+Return ONLY this JSON — no prose, no markdown:
+{"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
+
+[USER]
+Paper: When Children Program Intelligent Environments: Lessons Learned from a Serious AR Game
+Authors: Evropi Stefanidi, Maria Korozi, Asterios Leonidis
+Abstract: While the body of research focusing on Intelligent Environments (IEs) programming by adults is steadily growing, informed insights about children as programmers of such environments are limited. Previous work already established that young children can learn programming basics. Yet, there is still a
+
+Chunks (1 total):
+[
+  {
+    "index": 0,
+    "text": "Title: When Children Program Intelligent Environments: Lessons Learned from a Seri…
+
+--- RESPONSE ---
+[ERROR] [gemini] <failed_attempts>
+
+<generation number="1">
+<exception>
+    Error code: 429 - [{'error': {'code': 429, 'message': 'Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details.', 'status': 'RESOURCE_EXHAUSTED'}}]
+</exception>
+<completion>
+    None
+</completion>
+</generation>
+
+<generation number="2">
+<excep
+
+
+========================================================================
+[21:15:26] extract_agent  structured=ClaimsOutput  budget=4/60
+========================================================================
+--- MESSAGES SENT ---
+[SYSTEM]
+You are a scientific claim extraction assistant.
+
+You will receive a list of text chunks from a research paper, each labeled with an index number.
+
+For each chunk that contains meaningful scientific content (findings, methods, contributions, or limitations),
+write a concise 1–2 sentence claim summarising the key point.
+
+Skip chunks that are:
+- Navigation text, headers, or HTML boilerplate
+- Reference lists or citations only
+- Very short or uninformative
+
+Return ONLY this JSON — no prose, no markdown:
+{"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
+
+[USER]
+Paper: When Children Program Intelligent Environments: Lessons Learned from a Serious AR Game
+Authors: Evropi Stefanidi, Maria Korozi, Asterios Leonidis
+Abstract: While the body of research focusing on Intelligent Environments (IEs) programming by adults is steadily growing, informed insights about children as programmers of such environments are limited. Previous work already established that young children can learn programming basics. Yet, there is still a
+
+Chunks (1 total):
+[
+  {
+    "index": 0,
+    "text": "Title: When Children Program Intelligent Environments: Lessons Learned from a Seri…
+
+--- RESPONSE ---
+[ERROR] [chatgpt] <failed_attempts>
+
+<generation number="1">
+<exception>
+    Error code: 429 - {'error': {'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.', 'type': 'insufficient_quota', 'param': None, 'code': 'insufficient_quota'}}
+</exception>
+<comple
+
+
+========================================================================
+[21:15:30] extract_agent  structured=ClaimsOutput  budget=4/60
+========================================================================
+--- MESSAGES SENT ---
+[SYSTEM]
+You are a scientific claim extraction assistant.
+
+You will receive a list of text chunks from a research paper, each labeled with an index number.
+
+For each chunk that contains meaningful scientific content (findings, methods, contributions, or limitations),
+write a concise 1–2 sentence claim summarising the key point.
+
+Skip chunks that are:
+- Navigation text, headers, or HTML boilerplate
+- Reference lists or citations only
+- Very short or uninformative
+
+Return ONLY this JSON — no prose, no markdown:
+{"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
+
+[USER]
+Paper: When Children Program Intelligent Environments: Lessons Learned from a Serious AR Game
+Authors: Evropi Stefanidi, Maria Korozi, Asterios Leonidis
+Abstract: While the body of research focusing on Intelligent Environments (IEs) programming by adults is steadily growing, informed insights about children as programmers of such environments are limited. Previous work already established that young children can learn programming basics. Yet, there is still a
+
+Chunks (1 total):
+[
+  {
+    "index": 0,
+    "text": "Title: When Children Program Intelligent Environments: Lessons Learned from a Seri…
+
+--- RESPONSE ---
+[ClaimsOutput]
+{"claims":[{"index":0,"text":"Previous research has shown that young children can learn programming basics, yet there is a need to investigate if this capability can be transferred in the context of Intelligent Environments.","category":"finding","confidence":0.9}]}
+
+
+========================================================================
+[21:15:34] extract_agent  structured=ClaimsOutput  budget=5/60
+========================================================================
+--- MESSAGES SENT ---
+[SYSTEM]
+You are a scientific claim extraction assistant.
+
+You will receive a list of text chunks from a research paper, each labeled with an index number.
+
+For each chunk that contains meaningful scientific content (findings, methods, contributions, or limitations),
+write a concise 1–2 sentence claim summarising the key point.
+
+Skip chunks that are:
+- Navigation text, headers, or HTML boilerplate
+- Reference lists or citations only
+- Very short or uninformative
+
+Return ONLY this JSON — no prose, no markdown:
+{"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
+
+[USER]
+Paper: GPT in Game Theory Experiments
+Authors: Fulin Guo
+Abstract: This paper explores the use of Generative Pre-trained Transformers (GPT) in strategic game experiments, specifically the ultimatum game and the prisoner's dilemma. I designed prompts and architectures to enable GPT to understand the game rules and to generate both its choices and the reasoning behin
+
+Chunks (7 total):
+[
+  {
+    "index": 0,
+    "text": "(OpenAI (2022), OpenAI (2023)). This paper presents a novel exploration of GPT\u2019s applicability in strategic game experiments. In this study, I develop prompts to enable the …
+
+--- RESPONSE ---
+[ClaimsOutput]
+{"claims":[{"index":0,"text":"This paper explores the use of GPT models in strategic game experiments by developing prompts that enable GPT-4 to understand game rules and engage in repeated interactions, mimicking human players.","category":"method","confidence":0.9},{"index":1,"text":"GPT's behaviors in strategic games align with intuitive expectations and observed human subjects' behaviors, such as rejecting backward induction, offering non-trivial amounts, and showing a negative correlation between rejection rates and offered amounts.","category":"finding","confidence":0.9},{"index":3,"text":"GPT's current capacity for strategic interaction has limitations, which highlights the value of text analysis in uncovering the underlying logic for decisions.","category":"limitation","confidence"…
+
+
+========================================================================
+[21:15:39] extract_agent  structured=ClaimsOutput  budget=6/60
+========================================================================
+--- MESSAGES SENT ---
+[SYSTEM]
+You are a scientific claim extraction assistant.
+
+You will receive a list of text chunks from a research paper, each labeled with an index number.
+
+For each chunk that contains meaningful scientific content (findings, methods, contributions, or limitations),
+write a concise 1–2 sentence claim summarising the key point.
+
+Skip chunks that are:
+- Navigation text, headers, or HTML boilerplate
+- Reference lists or citations only
+- Very short or uninformative
+
+Return ONLY this JSON — no prose, no markdown:
+{"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
+
+[USER]
+Paper: Higher education assessment practice in the era of generative AI tools
+Authors: Bayode Ogunleye, Kudirat Ibilola Zakariyyah, Oluwaseun Ajao
+Abstract: The higher education (HE) sector benefits every nation's economy and society at large. However, their contributions are challenged by advanced technologies like generative artificial intelligence (GenAI) tools. In this paper, we provide a comprehensive assessment of GenAI tools towards assessment an
+
+Chunks (1 total):
+[
+  {
+    "index": 0,
+    "text": "Title: Higher education assessment practice in the era of generative AI tools  Abstract:…
+
+--- RESPONSE ---
+[ERROR] [gemini] <failed_attempts>
+
+<generation number="1">
+<exception>
+    Error code: 429 - [{'error': {'code': 429, 'message': 'Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details.', 'status': 'RESOURCE_EXHAUSTED'}}]
+</exception>
+<completion>
+    None
+</completion>
+</generation>
+
+<generation number="2">
+<excep
+
+
+========================================================================
+[21:15:44] extract_agent  structured=ClaimsOutput  budget=6/60
+========================================================================
+--- MESSAGES SENT ---
+[SYSTEM]
+You are a scientific claim extraction assistant.
+
+You will receive a list of text chunks from a research paper, each labeled with an index number.
+
+For each chunk that contains meaningful scientific content (findings, methods, contributions, or limitations),
+write a concise 1–2 sentence claim summarising the key point.
+
+Skip chunks that are:
+- Navigation text, headers, or HTML boilerplate
+- Reference lists or citations only
+- Very short or uninformative
+
+Return ONLY this JSON — no prose, no markdown:
+{"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
+
+[USER]
+Paper: Higher education assessment practice in the era of generative AI tools
+Authors: Bayode Ogunleye, Kudirat Ibilola Zakariyyah, Oluwaseun Ajao
+Abstract: The higher education (HE) sector benefits every nation's economy and society at large. However, their contributions are challenged by advanced technologies like generative artificial intelligence (GenAI) tools. In this paper, we provide a comprehensive assessment of GenAI tools towards assessment an
+
+Chunks (1 total):
+[
+  {
+    "index": 0,
+    "text": "Title: Higher education assessment practice in the era of generative AI tools  Abstract:…
+
+--- RESPONSE ---
+[ERROR] [chatgpt] <failed_attempts>
+
+<generation number="1">
+<exception>
+    Error code: 429 - {'error': {'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.', 'type': 'insufficient_quota', 'param': None, 'code': 'insufficient_quota'}}
+</exception>
+<comple
+
+
+========================================================================
+[21:15:48] extract_agent  structured=ClaimsOutput  budget=6/60
+========================================================================
+--- MESSAGES SENT ---
+[SYSTEM]
+You are a scientific claim extraction assistant.
+
+You will receive a list of text chunks from a research paper, each labeled with an index number.
+
+For each chunk that contains meaningful scientific content (findings, methods, contributions, or limitations),
+write a concise 1–2 sentence claim summarising the key point.
+
+Skip chunks that are:
+- Navigation text, headers, or HTML boilerplate
+- Reference lists or citations only
+- Very short or uninformative
+
+Return ONLY this JSON — no prose, no markdown:
+{"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
+
+[USER]
+Paper: Higher education assessment practice in the era of generative AI tools
+Authors: Bayode Ogunleye, Kudirat Ibilola Zakariyyah, Oluwaseun Ajao
+Abstract: The higher education (HE) sector benefits every nation's economy and society at large. However, their contributions are challenged by advanced technologies like generative artificial intelligence (GenAI) tools. In this paper, we provide a comprehensive assessment of GenAI tools towards assessment an
+
+Chunks (1 total):
+[
+  {
+    "index": 0,
+    "text": "Title: Higher education assessment practice in the era of generative AI tools  Abstract:…
+
+--- RESPONSE ---
+[ClaimsOutput]
+{"claims":[{"index":0,"text":"This paper comprehensively assesses GenAI tools in higher education assessment and pedagogic practice.","category":"method","confidence":0.9},{"index":0,"text":"The study experimented with three assessment instruments from different disciplines to evaluate GenAI tools.","category":"method","confidence":1.0}]}
+
+
+========================================================================
+[21:15:54] synthesis_agent  structured=SynthesisOutput  budget=7/60
+========================================================================
+--- MESSAGES SENT ---
+[SYSTEM]
+You are a scientific synthesis agent producing a living literature review.
+
+You will receive a list of pre-verified claims, each tagged with a citation token like [citation_0001].
+
+TASK:
+Write a 4–6 paragraph synthesis covering: main themes, key findings, methodological patterns, and open problems.
+Use [citation_XXXX] tokens inline to reference the claims.
+
+OUTPUT FORMAT — return ONLY this JSON, no prose, no markdown:
+{
+  "synthesis": "<text with [citation_XXXX] tokens inline>"
+}
+
+RULES:
+- Use the exact citation tokens provided — do not invent new ones.
+- Place each [citation_XXXX] token immed…
+
+[USER]
+Topic: 'GPT increases kids development'
+
+Pre-verified claims (14 total):
+[
+  {
+    "citation": "[citation_0001]",
+    "text": "A four-week study revealed that children find it challenging to adhere to strict routines when interacting with a learning companion robot in real-world settings.",
+    "category": "finding",
+    "paper_title": "Understanding Factors that Shape Children's Long Term Engagement with an In-Home Learning Companion Robot"
+  },
+  {
+    "citation": "[citation_0002]",
+    "text": "Life events such as vacations, family visits, and extracurricular activities significantly impact…
+
+--- RESPONSE ---
+[ERROR] [gemini] <failed_attempts>
+
+<generation number="1">
+<exception>
+    Error code: 429 - [{'error': {'code': 429, 'message': 'Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details.', 'status': 'RESOURCE_EXHAUSTED'}}]
+</exception>
+<completion>
+    None
+</completion>
+</generation>
+
+<generation number="2">
+<excep
+
+
+========================================================================
+[21:15:58] synthesis_agent  structured=SynthesisOutput  budget=7/60
+========================================================================
+--- MESSAGES SENT ---
+[SYSTEM]
+You are a scientific synthesis agent producing a living literature review.
+
+You will receive a list of pre-verified claims, each tagged with a citation token like [citation_0001].
+
+TASK:
+Write a 4–6 paragraph synthesis covering: main themes, key findings, methodological patterns, and open problems.
+Use [citation_XXXX] tokens inline to reference the claims.
+
+OUTPUT FORMAT — return ONLY this JSON, no prose, no markdown:
+{
+  "synthesis": "<text with [citation_XXXX] tokens inline>"
+}
+
+RULES:
+- Use the exact citation tokens provided — do not invent new ones.
+- Place each [citation_XXXX] token immed…
+
+[USER]
+Topic: 'GPT increases kids development'
+
+Pre-verified claims (14 total):
+[
+  {
+    "citation": "[citation_0001]",
+    "text": "A four-week study revealed that children find it challenging to adhere to strict routines when interacting with a learning companion robot in real-world settings.",
+    "category": "finding",
+    "paper_title": "Understanding Factors that Shape Children's Long Term Engagement with an In-Home Learning Companion Robot"
+  },
+  {
+    "citation": "[citation_0002]",
+    "text": "Life events such as vacations, family visits, and extracurricular activities significantly impact…
+
+--- RESPONSE ---
+[ERROR] [chatgpt] <failed_attempts>
+
+<generation number="1">
+<exception>
+    Error code: 429 - {'error': {'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.', 'type': 'insufficient_quota', 'param': None, 'code': 'insufficient_quota'}}
+</exception>
+<comple
+
+
+========================================================================
+[21:16:14] synthesis_agent  structured=SynthesisOutput  budget=7/60
+========================================================================
+--- MESSAGES SENT ---
+[SYSTEM]
+You are a scientific synthesis agent producing a living literature review.
+
+You will receive a list of pre-verified claims, each tagged with a citation token like [citation_0001].
+
+TASK:
+Write a 4–6 paragraph synthesis covering: main themes, key findings, methodological patterns, and open problems.
+Use [citation_XXXX] tokens inline to reference the claims.
+
+OUTPUT FORMAT — return ONLY this JSON, no prose, no markdown:
+{
+  "synthesis": "<text with [citation_XXXX] tokens inline>"
+}
+
+RULES:
+- Use the exact citation tokens provided — do not invent new ones.
+- Place each [citation_XXXX] token immed…
+
+[USER]
+Topic: 'GPT increases kids development'
+
+Pre-verified claims (14 total):
+[
+  {
+    "citation": "[citation_0001]",
+    "text": "A four-week study revealed that children find it challenging to adhere to strict routines when interacting with a learning companion robot in real-world settings.",
+    "category": "finding",
+    "paper_title": "Understanding Factors that Shape Children's Long Term Engagement with an In-Home Learning Companion Robot"
+  },
+  {
+    "citation": "[citation_0002]",
+    "text": "Life events such as vacations, family visits, and extracurricular activities significantly impact…
+
+--- RESPONSE ---
+[SynthesisOutput]
+{"synthesis":"[citation_0001] and [citation_0002] highlight the variability in children’s engagement with learning companion robots, influenced by external factors such as life events. These studies emphasize that adherence to routines can be challenging but are essential for long-term interaction.[citation_0003] employs thematic analysis to identify key factors that affect this engagement, underscoring the complexity of maintaining regular interactions between children and intelligent companions. [citation_0004] and [citation_0005] both underscore the importance of caretaking activities in fostering relationships with social robots; these tasks can potentially enhance long-term engagement by involving children more deeply.[citation_0009], [citation_12] together reveal that GPT, when used …
+
