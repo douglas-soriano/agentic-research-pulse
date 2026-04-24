@@ -4,22 +4,20 @@ import Link from "next/link";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-// ── Design tokens (Slack-inspired) ─────────────────────────────────────────
 const C = {
-  bg:       "#1a1d21",
-  surface:  "#222529",
-  card:     "#27292c",
-  cardHi:   "#2e3136",
-  border:   "#414447",
-  borderSub:"#2e3136",
-  textPri:  "#d1d2d3",
-  textSec:  "#9b9b9b",
-  textMut:  "#616061",
-  blue:     "#1d9bd1",
-  blueDark: "#1264a3",
-  green:    "#2bac76",
-  amber:    "#e8a427",
-  red:      "#e8645a",
+  bg:          "#f7f7f5",
+  surface:     "#ffffff",
+  surfaceMuted:"#fafafa",
+  border:      "rgba(0,0,0,0.08)",
+  borderMd:    "rgba(0,0,0,0.12)",
+  text:        "#1a1a1a",
+  textSec:     "#555555",
+  textMut:     "#999999",
+  accent:      "#ff6b00",
+  success:     "#2f9e6e",
+  running:     "#d4a017",
+  info:        "#2f80ed",
+  danger:      "#e45b5b",
 } as const;
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -50,362 +48,383 @@ interface TraceStep {
   timestamp: string;
 }
 
-// ── Phase config ───────────────────────────────────────────────────────────
-const PHASES = [
-  { agents: ["search_agent"],    label: "Literature Search", color: C.blue,  tag: "search"    },
-  { agents: ["extract_agent"],   label: "Claim Extraction",  color: C.amber, tag: "extract"   },
-  { agents: ["synthesis_agent"], label: "Synthesis",         color: C.green, tag: "synthesis" },
-] as const;
+// ── Pipeline model ─────────────────────────────────────────────────────────
+const TOOL_LABEL: Record<string, string> = {
+  plan_queries:          "Planning search strategy",
+  parallel_arxiv_search: "Searching arXiv",
+  semantic_search:       "Reading papers",
+  extract_claims:        "Extracting claims",
+  verify_citations:      "Verifying citation support",
+  synthesize:            "Writing synthesis",
+};
 
-type Phase = typeof PHASES[number];
+const TOOL_COLOR: Record<string, string> = {
+  plan_queries:          C.info,
+  parallel_arxiv_search: C.info,
+  semantic_search:       C.running,
+  extract_claims:        C.running,
+  verify_citations:      C.success,
+  synthesize:            C.success,
+};
 
-function phaseOf(agent: string): Phase {
-  return PHASES.find(p => (p.agents as readonly string[]).includes(agent)) ?? PHASES[0];
+// Fixed pipeline order
+const TOOL_SEQUENCE = [
+  "plan_queries",
+  "parallel_arxiv_search",
+  "semantic_search",   // repeats per paper
+  "extract_claims",    // repeats per paper
+  "verify_citations",
+  "synthesize",
+];
+
+function describeStep(step: TraceStep): string {
+  const out = step.output as Record<string, unknown>;
+  switch (step.tool) {
+    case "plan_queries": {
+      const n = (out?.queries as string[] | undefined)?.length;
+      return n ? `Generated ${n} search queries` : "Generated search queries";
+    }
+    case "parallel_arxiv_search": {
+      const n = out?.unique_papers as number | undefined;
+      return n !== undefined ? `Found ${n} candidate papers` : "Searched arXiv";
+    }
+    case "semantic_search": {
+      const n = out?.chunks_found as number | undefined;
+      return `Retrieved ${n ?? "?"} relevant passages`;
+    }
+    case "extract_claims": {
+      const n = out?.claims_extracted as number | undefined;
+      return n !== undefined ? `${n} claim${n !== 1 ? "s" : ""} extracted` : "Extracted claims";
+    }
+    case "verify_citations": {
+      const v = out?.verified as number | undefined;
+      const r = out?.rejected as number | undefined;
+      return `${v ?? 0} verified · ${r ?? 0} rejected`;
+    }
+    case "synthesize": {
+      const u = out?.citations_used as number | undefined;
+      return u !== undefined ? `Written with ${u} citation${u !== 1 ? "s" : ""}` : "Synthesis complete";
+    }
+    default: return "";
+  }
 }
 
-function shortAgent(agent: string) {
-  return agent.replace("_agent", "");
+function nestedItems(step: TraceStep): string[] {
+  const out = step.output as Record<string, unknown>;
+  if (step.tool === "plan_queries") {
+    return (out?.queries as string[] | undefined) ?? [];
+  }
+  return [];
 }
 
-function shortDetail(input: Record<string, unknown>): string {
-  if (input.query && typeof input.query === "string")
-    return `"${input.query.slice(0, 48)}${input.query.length > 48 ? "…" : ""}"`;
-  if (input.title && typeof input.title === "string")
-    return (input.title as string).slice(0, 48) + ((input.title as string).length > 48 ? "…" : "");
-  return "";
+// ── Workflow builder ───────────────────────────────────────────────────────
+type StepStatus = "done" | "running" | "failed" | "pending";
+
+interface WorkflowItem {
+  id:          string;
+  label:       string;
+  techLabel:   string;
+  color:       string;
+  steps:       TraceStep[];
+  status:      StepStatus;
+  description: string;
+  nested:      string[];
+  totalMs:     number;
 }
 
-// ── Status badge ───────────────────────────────────────────────────────────
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { color: string; bg: string; border: string }> = {
-    connecting: { color: C.textSec, bg: C.surface,  border: C.border   },
-    queued:     { color: C.amber,   bg: "#2a1f08",  border: "#5a3f0a"  },
-    started:    { color: C.blue,    bg: "#0e1e2e",  border: "#1a4060"  },
-    done:       { color: C.green,   bg: "#0d1f14",  border: "#1a4028"  },
-    failed:     { color: C.red,     bg: "#2a1010",  border: "#5a2020"  },
-    error:      { color: C.red,     bg: "#2a1010",  border: "#5a2020"  },
-  };
-  const s = map[status] ?? map.connecting;
+function buildWorkflow(steps: TraceStep[], isLive: boolean): WorkflowItem[] {
+  // Group steps by tool
+  const byTool: Record<string, TraceStep[]> = {};
+  for (const s of steps) {
+    if (!s.tool) continue;
+    (byTool[s.tool] ??= []).push(s);
+  }
 
-  return (
-    <span style={{
-      display: "inline-flex", alignItems: "center", gap: 5,
-      padding: "0.2rem 0.625rem",
-      background: s.bg, color: s.color,
-      borderRadius: 5,
-      fontSize: "0.68rem", fontWeight: 700,
-      textTransform: "uppercase", letterSpacing: "0.07em",
-      border: `1px solid ${s.border}`,
-    }}>
-      {status === "started" && (
-        <span className="pulse-live" style={{
-          width: 5, height: 5, borderRadius: "50%",
-          background: C.blue, display: "inline-block",
-        }} />
-      )}
-      {status}
-    </span>
-  );
+  // Find the index of the last tool seen, to infer what's running next
+  let lastSeenIdx = -1;
+  for (const s of steps) {
+    const i = TOOL_SEQUENCE.indexOf(s.tool ?? "");
+    if (i > lastSeenIdx) lastSeenIdx = i;
+  }
+  const nextTool = TOOL_SEQUENCE[lastSeenIdx + 1] ?? null;
+
+  return TOOL_SEQUENCE.map(tool => {
+    const toolSteps = byTool[tool] ?? [];
+    const hasDone   = toolSteps.some(s => s.success);
+    const hasFailed = toolSteps.some(s => !s.success);
+    const totalMs   = toolSteps.reduce((a, s) => a + s.duration_ms, 0);
+
+    let status: StepStatus = "pending";
+    if (hasFailed) status = "failed";
+    else if (hasDone) status = "done";
+    else if (isLive && (tool === nextTool || (steps.length === 0 && tool === "plan_queries"))) {
+      status = "running";
+    }
+
+    const last = toolSteps[toolSteps.length - 1];
+    const baseDesc = last ? describeStep(last) : (status === "running" ? "Working…" : "");
+
+    // For per-paper steps, prefix with paper count
+    const isPerPaper = tool === "semantic_search" || tool === "extract_claims";
+    const description = isPerPaper && toolSteps.length > 0
+      ? `${toolSteps.length} paper${toolSteps.length !== 1 ? "s" : ""} · ${baseDesc}`
+      : baseDesc;
+
+    return {
+      id: tool, label: TOOL_LABEL[tool] ?? tool,
+      techLabel: tool, color: TOOL_COLOR[tool] ?? C.textMut,
+      steps: toolSteps, status, description,
+      nested: last ? nestedItems(last) : [],
+      totalMs,
+    };
+  });
 }
 
-// ── Stats grid ─────────────────────────────────────────────────────────────
-function StatsGrid({ event }: { event: TaskEvent }) {
-  const items = [
-    { label: "Papers",    value: event.papers_processed,  color: C.blue  },
-    { label: "Claims",    value: event.claims_extracted,   color: C.amber },
-    { label: "Citations", value: event.citations_verified, color: C.green },
-    {
-      label: "Duration",
-      value: event.total_duration_ms
-        ? `${(event.total_duration_ms / 1000).toFixed(1)}s`
-        : "—",
-      color: C.textSec,
-    },
-  ];
-  return (
-    <div style={{
-      display: "grid", gridTemplateColumns: "repeat(4,1fr)",
-      gap: "0.625rem", marginBottom: "1.5rem",
-    }}>
-      {items.map(({ label, value, color }) => (
-        <div key={label} style={{
-          padding: "1rem 0.875rem", textAlign: "center",
-          background: C.card, border: `1px solid ${C.border}`, borderRadius: 8,
-        }}>
-          <div style={{ fontSize: "1.5rem", fontWeight: 700, color, lineHeight: 1 }}>
-            {value ?? "—"}
-          </div>
-          <div style={{ fontSize: "0.7rem", color: C.textMut, marginTop: 6, letterSpacing: "0.03em" }}>
-            {label}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ── Live activity panel ────────────────────────────────────────────────────
-function LivePanel({ steps, status }: { steps: TraceStep[]; status: string }) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const lastStep  = steps[steps.length - 1];
-  const phase     = lastStep ? phaseOf(lastStep.agent) : PHASES[0];
-  const isRunning = status === "started";
-  const isQueued  = status === "queued";
-
-  useEffect(() => {
-    if (scrollRef.current)
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [steps.length]);
-
-  return (
-    <div style={{
-      background: C.surface,
-      border: `1px solid ${C.border}`,
-      borderRadius: 10,
-      overflow: "hidden",
-      marginBottom: "1.5rem",
-    }}>
-      {/* Panel header */}
+// ── Step status dot ────────────────────────────────────────────────────────
+function StepDot({ status }: { status: StepStatus }) {
+  if (status === "running") {
+    return (
+      <div style={{ width: 20, height: 20, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        <span className="spinner-sm" />
+      </div>
+    );
+  }
+  if (status === "done") {
+    return (
       <div style={{
-        display: "flex", alignItems: "center", gap: "0.625rem",
-        padding: "0.75rem 1rem",
-        borderBottom: `1px solid ${C.border}`,
-        background: C.card,
+        width: 20, height: 20, borderRadius: "50%",
+        background: "#f0f0ee", border: "1.5px solid rgba(0,0,0,0.13)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontSize: "0.6rem", color: "#888", fontWeight: 700, flexShrink: 0,
       }}>
-        {isRunning
-          ? <span className="spinner" />
-          : <span style={{
-              width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
-              background: isQueued ? C.amber : C.textMut,
-            }} />
-        }
-        <span style={{ fontSize: "0.82rem", fontWeight: 600, color: C.textPri }}>
-          Pipeline execution
-        </span>
-        {isRunning && lastStep && (
-          <span style={{
-            fontSize: "0.68rem", fontWeight: 700,
-            color: phase.color,
-            background: phase.color + "22",
-            border: `1px solid ${phase.color}44`,
-            padding: "1px 8px", borderRadius: 4,
-          }}>
-            {phase.tag}
-          </span>
-        )}
-        <span style={{ marginLeft: "auto", fontSize: "0.72rem", color: C.textMut }}>
-          {steps.length} events
-        </span>
+        ✓
       </div>
-
-      {/* Log rows */}
-      <div ref={scrollRef} className="hide-scroll" style={{ maxHeight: 220, overflowY: "auto" }}>
-        {steps.length === 0 ? (
-          <div style={{ padding: "1rem", color: C.textMut, fontSize: "0.85rem" }}>
-            {isQueued ? "Job queued — waiting for a worker…" : "Connecting to pipeline…"}
-          </div>
-        ) : (
-          steps.map((step, i) => {
-            const sp     = phaseOf(step.agent);
-            const isLast = i === steps.length - 1;
-            const detail = shortDetail(step.input);
-            return (
-              <div
-                key={i}
-                className={isLast ? "step-enter" : ""}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "12px 58px 1fr auto",
-                  alignItems: "center",
-                  gap: "0.75rem",
-                  padding: "0.45rem 1rem",
-                  borderBottom: i < steps.length - 1 ? `1px solid ${C.borderSub}` : "none",
-                  background: isLast && isRunning ? C.cardHi : "transparent",
-                  transition: "background 0.2s",
-                }}
-              >
-                <span style={{
-                  width: 7, height: 7, borderRadius: "50%",
-                  background: step.success ? sp.color : C.red,
-                  display: "inline-block",
-                  ...(isLast && isRunning ? { animation: "pulse 1.4s ease-in-out infinite" } : {}),
-                }} />
-                <span style={{
-                  fontSize: "0.68rem", fontWeight: 700,
-                  color: sp.color,
-                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                }}>
-                  {shortAgent(step.agent)}
-                </span>
-                <span style={{
-                  fontSize: "0.82rem",
-                  color: isLast && isRunning ? C.textPri : C.textSec,
-                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                  fontFamily: "ui-monospace, monospace",
-                }}>
-                  {step.tool}
-                  {detail && (
-                    <span style={{ color: C.textMut, fontSize: "0.75rem" }}> {detail}</span>
-                  )}
-                </span>
-                <span style={{
-                  fontSize: "0.7rem", color: C.textMut,
-                  fontVariantNumeric: "tabular-nums", flexShrink: 0,
-                }}>
-                  {step.duration_ms}ms
-                </span>
-              </div>
-            );
-          })
-        )}
+    );
+  }
+  if (status === "failed") {
+    return (
+      <div style={{
+        width: 20, height: 20, borderRadius: "50%",
+        background: "#fef0f0", border: `1.5px solid ${C.danger}40`,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontSize: "0.6rem", color: C.danger, fontWeight: 700, flexShrink: 0,
+      }}>
+        ✗
       </div>
-
-      {/* Progress bar */}
-      {isRunning && (
-        <div style={{ height: 2, background: C.borderSub }}>
-          <div className="progress-slide" style={{
-            height: "100%", width: "35%",
-            background: `linear-gradient(90deg, transparent, ${phase.color}, transparent)`,
-          }} />
-        </div>
-      )}
-    </div>
+    );
+  }
+  // pending — dashed ring
+  return (
+    <div style={{
+      width: 20, height: 20, borderRadius: "50%",
+      border: "1.5px dashed rgba(0,0,0,0.2)",
+      flexShrink: 0,
+    }} />
   );
 }
 
-// ── Step row (expandable) ──────────────────────────────────────────────────
-function StepRow({ step, idx }: { step: TraceStep; idx: number }) {
+// ── Timeline item ──────────────────────────────────────────────────────────
+function TimelineItem({ item, isLast }: { item: WorkflowItem; isLast: boolean }) {
   const [open, setOpen] = useState(false);
-  const phase  = phaseOf(step.agent);
-  const detail = shortDetail(step.input);
+  const canExpand = item.steps.length > 0;
+  const isDone    = item.status === "done";
+  const isPending = item.status === "pending";
+  const isRunning = item.status === "running";
 
   return (
-    <div className="step-enter" style={{
-      borderRadius: 6, marginBottom: "0.3rem", overflow: "hidden",
-      border: `1px solid ${step.success ? C.border : "#5a2020"}`,
-    }}>
-      <button onClick={() => setOpen(o => !o)} style={{
-        width: "100%", textAlign: "left",
-        background: step.success ? C.card : "#2a1010",
-        padding: "0.5rem 0.875rem",
-        border: "none", cursor: "pointer",
-        display: "grid",
-        gridTemplateColumns: "12px 24px 58px 1fr auto auto",
-        alignItems: "center",
-        gap: "0.5rem",
-        color: C.textPri,
-      }}>
-        <span style={{ color: step.success ? phase.color : C.red, fontSize: "0.65rem" }}>
-          {step.success ? "●" : "✗"}
-        </span>
-        <span style={{ color: C.textMut, fontSize: "0.7rem", fontVariantNumeric: "tabular-nums" }}>
-          {idx + 1}
-        </span>
-        <span style={{
-          fontSize: "0.7rem", fontWeight: 700, color: phase.color,
-          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-        }}>
-          {shortAgent(step.agent)}
-        </span>
-        <span style={{
-          fontSize: "0.82rem", color: C.textSec,
-          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          fontFamily: "ui-monospace, monospace",
-        }}>
-          {step.tool}
-          {detail && <span style={{ color: C.textMut, fontSize: "0.75rem" }}> {detail}</span>}
-        </span>
-        <span style={{ color: C.textMut, fontSize: "0.7rem", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>
-          {step.duration_ms}ms
-        </span>
-        <span style={{ color: C.textMut, fontSize: "0.65rem", flexShrink: 0 }}>
-          {open ? "▲" : "▼"}
-        </span>
-      </button>
+    <div className="step-enter" style={{ display: "flex", gap: "0.75rem" }}>
+      {/* Left column: dot + connector line */}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 2, flexShrink: 0 }}>
+        <StepDot status={item.status} />
+        {!isLast && (
+          <div style={{
+            width: 1.5, flex: 1, minHeight: 20,
+            background: isDone ? "rgba(0,0,0,0.1)" : "rgba(0,0,0,0.05)",
+            margin: "4px 0",
+          }} />
+        )}
+      </div>
 
-      {open && (
-        <div style={{
-          padding: "0.875rem",
-          background: C.surface,
-          borderTop: `1px solid ${C.border}`,
-          fontSize: "0.78rem",
-        }}>
-          {step.error && (
-            <p style={{ color: C.red, margin: "0 0 0.625rem", fontWeight: 500 }}>
-              Error: {step.error}
-            </p>
+      {/* Right column: content */}
+      <div style={{ flex: 1, paddingBottom: isLast ? 0 : "1.125rem" }}>
+        {/* Row: label + duration + details toggle */}
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+          <span style={{
+            fontWeight: 600, fontSize: "0.9rem",
+            color: isPending ? C.textMut : C.text,
+          }}>
+            {item.label}
+          </span>
+
+          {item.totalMs > 0 && (
+            <span style={{ fontSize: "0.72rem", color: C.textMut, fontVariantNumeric: "tabular-nums" }}>
+              {item.totalMs >= 1000
+                ? `${(item.totalMs / 1000).toFixed(1)}s`
+                : `${item.totalMs}ms`}
+            </span>
           )}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-            {(["input", "output"] as const).map(key => (
-              <div key={key}>
-                <p style={{
-                  color: C.textMut, margin: "0 0 0.375rem",
-                  textTransform: "uppercase", fontSize: "0.65rem",
-                  letterSpacing: "0.07em", fontWeight: 700,
-                }}>
-                  {key}
+
+          {canExpand && (
+            <button
+              onClick={() => setOpen(o => !o)}
+              style={{
+                marginLeft: "auto", background: "none", border: "none",
+                cursor: "pointer", color: C.textMut,
+                fontSize: "0.72rem", padding: "1px 6px", borderRadius: 5,
+                display: "flex", alignItems: "center", gap: 3,
+                transition: "color 0.1s",
+              }}
+            >
+              Details {open ? "▲" : "▼"}
+            </button>
+          )}
+        </div>
+
+        {/* Description */}
+        {item.description && (
+          <p style={{
+            margin: "0.2rem 0 0",
+            fontSize: "0.82rem",
+            color: isPending ? C.textMut : C.textSec,
+            lineHeight: 1.5,
+          }}>
+            {item.description}
+          </p>
+        )}
+
+        {/* Nested items (e.g., generated queries) */}
+        {isDone && item.nested.length > 0 && (
+          <ul style={{ margin: "0.4rem 0 0", paddingLeft: "1rem", listStyle: "none" }}>
+            {item.nested.map((n, i) => (
+              <li key={i} style={{
+                position: "relative",
+                fontSize: "0.8rem", color: C.textSec, lineHeight: 1.5,
+                padding: "0.1rem 0",
+              }}>
+                <span style={{ position: "absolute", left: -12, color: C.textMut }}>·</span>
+                {n}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {/* Running indicator */}
+        {isRunning && (
+          <div style={{
+            display: "inline-flex", alignItems: "center", gap: "0.4rem",
+            marginTop: "0.4rem",
+            padding: "0.25rem 0.6rem",
+            background: "#fffbf0",
+            border: `1px solid ${C.running}30`,
+            borderRadius: 20,
+            fontSize: "0.75rem", color: C.running,
+          }}>
+            <span className="pulse-live" style={{ width: 6, height: 6, borderRadius: "50%", background: C.running, display: "inline-block" }} />
+            Working…
+          </div>
+        )}
+
+        {/* Expandable technical details */}
+        {open && (
+          <div className="slide-down" style={{
+            marginTop: "0.625rem",
+            padding: "0.875rem",
+            background: C.surfaceMuted,
+            border: `1px solid ${C.border}`,
+            borderRadius: 12,
+            fontSize: "0.75rem",
+          }}>
+            {item.steps.map((step, i) => (
+              <div key={i} style={{ marginBottom: i < item.steps.length - 1 ? "1rem" : 0 }}>
+                {item.steps.length > 1 && (
+                  <p style={{
+                    margin: "0 0 0.375rem",
+                    fontSize: "0.65rem", fontWeight: 700, letterSpacing: "0.06em",
+                    textTransform: "uppercase", color: C.textMut,
+                  }}>
+                    Invocation {i + 1}
+                  </p>
+                )}
+                {step.error && (
+                  <p style={{ color: C.danger, margin: "0 0 0.375rem", fontWeight: 500 }}>
+                    Error: {step.error}
+                  </p>
+                )}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+                  {(["input", "output"] as const).map(key => (
+                    <div key={key}>
+                      <p style={{
+                        margin: "0 0 0.25rem",
+                        fontSize: "0.63rem", fontWeight: 700,
+                        textTransform: "uppercase", letterSpacing: "0.07em",
+                        color: C.textMut,
+                      }}>
+                        {key}
+                      </p>
+                      <pre style={{
+                        margin: 0, color: C.textSec,
+                        whiteSpace: "pre-wrap", wordBreak: "break-word",
+                        fontSize: "0.72rem", lineHeight: 1.55,
+                      }}>
+                        {JSON.stringify(step[key], null, 2)}
+                      </pre>
+                    </div>
+                  ))}
+                </div>
+                <p style={{ margin: "0.5rem 0 0", color: C.textMut, fontSize: "0.68rem" }}>
+                  {step.duration_ms}ms · {step.agent}
+                  {" · "}{new Date(step.timestamp).toLocaleTimeString()}
                 </p>
-                <pre style={{
-                  margin: 0, color: C.textSec,
-                  whiteSpace: "pre-wrap", wordBreak: "break-word",
-                  fontSize: "0.75rem", lineHeight: 1.6,
-                }}>
-                  {JSON.stringify(step[key], null, 2)}
-                </pre>
               </div>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
 
-// ── Phase accordion ────────────────────────────────────────────────────────
-function PhaseAccordion({ phase, steps }: { phase: Phase; steps: TraceStep[] }) {
-  const [open, setOpen] = useState(false);
-  const phaseSteps = steps.filter(s => (phase.agents as readonly string[]).includes(s.agent));
-  if (!phaseSteps.length) return null;
-
-  const ok      = phaseSteps.filter(s => s.success).length;
-  const failed  = phaseSteps.length - ok;
-  const totalMs = phaseSteps.reduce((a, s) => a + s.duration_ms, 0);
-
+// ── Status pill ────────────────────────────────────────────────────────────
+function StatusPill({ label, elapsed }: { label: string; elapsed: number }) {
   return (
     <div style={{
-      marginBottom: "0.5rem",
+      display: "inline-flex", alignItems: "center", gap: "0.5rem",
+      padding: "0.4rem 0.875rem",
+      background: C.surface,
       border: `1px solid ${C.border}`,
-      borderRadius: 8, overflow: "hidden",
+      borderRadius: 100,
+      boxShadow: "0 2px 14px rgba(0,0,0,0.07)",
+      marginBottom: "1.5rem",
     }}>
-      <button onClick={() => setOpen(o => !o)} style={{
-        width: "100%", textAlign: "left",
-        background: C.card,
-        padding: "0.75rem 1rem",
-        border: "none", cursor: "pointer",
-        display: "flex", alignItems: "center", gap: "0.75rem",
-        color: C.textPri,
-      }}>
-        <span style={{
-          width: 8, height: 8, borderRadius: "50%",
-          background: phase.color, flexShrink: 0,
-        }} />
-        <span style={{ fontWeight: 600, fontSize: "0.875rem" }}>{phase.label}</span>
-        <span style={{ color: C.textMut, fontSize: "0.75rem" }}>
-          {phaseSteps.length} steps · {(totalMs / 1000).toFixed(1)}s
-        </span>
-        {failed > 0 && (
-          <span style={{ color: C.red, fontSize: "0.75rem" }}>{failed} failed</span>
-        )}
-        <span style={{ color: C.textMut, fontSize: "0.7rem", marginLeft: "auto" }}>
-          {open ? "▲" : "▼"}
-        </span>
-      </button>
+      <span className="spinner-sm" />
+      <span style={{ fontSize: "0.82rem", fontWeight: 500, color: C.text }}>{label}</span>
+      <span style={{ fontSize: "0.78rem", color: C.textMut }}>{elapsed}s</span>
+    </div>
+  );
+}
 
-      {open && (
-        <div style={{ background: C.surface, padding: "0.5rem" }}>
-          {phaseSteps.map((step, i) => <StepRow key={i} step={step} idx={i} />)}
+// ── Stats row ──────────────────────────────────────────────────────────────
+function StatsRow({ ev }: { ev: TaskEvent }) {
+  const items = [
+    { label: "papers",    value: ev.papers_processed,  color: C.info    },
+    { label: "claims",    value: ev.claims_extracted,   color: C.running },
+    { label: "citations", value: ev.citations_verified, color: C.success },
+    {
+      label: "duration",
+      value: ev.total_duration_ms ? `${(ev.total_duration_ms / 1000).toFixed(0)}s` : "—",
+      color: C.textMut,
+    },
+  ];
+  return (
+    <div style={{ display: "flex", gap: "1.25rem", flexWrap: "wrap", margin: "0.5rem 0 1.25rem" }}>
+      {items.map(({ label, value, color }) => (
+        <div key={label} style={{ display: "flex", alignItems: "baseline", gap: "0.3rem" }}>
+          <span style={{ fontSize: "1.15rem", fontWeight: 700, color, lineHeight: 1 }}>
+            {value ?? "—"}
+          </span>
+          <span style={{ fontSize: "0.75rem", color: C.textMut }}>{label}</span>
         </div>
-      )}
+      ))}
     </div>
   );
 }
@@ -415,6 +434,8 @@ export default function TracePage({ params }: { params: { jobId: string } }) {
   const [status,    setStatus]    = useState("connecting");
   const [taskEvent, setTaskEvent] = useState<TaskEvent | null>(null);
   const [steps,     setSteps]     = useState<TraceStep[]>([]);
+  const [elapsed,   setElapsed]   = useState(0);
+  const startRef = useRef<number | null>(null);
 
   useEffect(() => {
     const { jobId } = params;
@@ -425,10 +446,11 @@ export default function TracePage({ params }: { params: { jobId: string } }) {
         const ev: TaskEvent = JSON.parse(e.data);
         setTaskEvent(ev);
         setStatus(ev.event);
+        if (ev.event === "started" && !startRef.current) startRef.current = Date.now();
         if (ev.event === "done" || ev.event === "failed") taskEs.close();
       } catch { /* ignore */ }
     };
-    taskEs.onerror = () => setStatus("error");
+    taskEs.onerror = () => setStatus(s => s === "connecting" ? "error" : s);
 
     const traceEs = new EventSource(`${API}/api/v1/stream/trace/${jobId}`);
     traceEs.onmessage = (e) => {
@@ -442,84 +464,126 @@ export default function TracePage({ params }: { params: { jobId: string } }) {
     return () => { taskEs.close(); traceEs.close(); };
   }, [params.jobId]);
 
+  // Elapsed time counter
+  useEffect(() => {
+    if (status !== "started") return;
+    const t = setInterval(() => {
+      if (startRef.current) setElapsed(Math.round((Date.now() - startRef.current) / 1000));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [status]);
+
   const isDone   = status === "done";
   const isFailed = status === "failed";
   const isLive   = ["connecting", "queued", "started"].includes(status);
 
+  const workflow    = buildWorkflow(steps, isLive);
+  const currentItem = workflow.find(w => w.status === "running");
+  const pillLabel   = currentItem?.label
+    ?? (status === "queued"     ? "Waiting for a worker…"
+      : status === "connecting" ? "Connecting…"
+      : "Starting pipeline…");
+
   return (
     <main>
-      {/* Page header */}
-      <div style={{ marginBottom: "1.5rem" }}>
-        <Link href="/" style={{ color: C.textMut, fontSize: "0.8rem", textDecoration: "none" }}>
-          ← Back
-        </Link>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginTop: "0.5rem", flexWrap: "wrap" }}>
-          <h2 style={{ margin: 0, fontSize: "1.15rem", color: C.textPri, fontWeight: 700, letterSpacing: "-0.01em" }}>
-            {taskEvent?.topic ?? params.jobId}
-          </h2>
-          <StatusBadge status={status} />
-        </div>
-        <p style={{ color: C.textMut, fontSize: "0.73rem", margin: "0.3rem 0 0" }}>
-          {steps.length} steps · job {params.jobId.slice(0, 8)}…
-        </p>
-      </div>
+      {/* Back */}
+      <Link href="/" style={{
+        color: C.textMut, fontSize: "0.8rem", textDecoration: "none",
+        display: "inline-block", marginBottom: "1rem",
+      }}>
+        ← Back
+      </Link>
 
-      {/* Live panel */}
-      {isLive && <LivePanel steps={steps} status={status} />}
+      {/* Heading */}
+      <h2 style={{
+        margin: "0 0 0.25rem",
+        fontSize: "1.35rem", fontWeight: 700, letterSpacing: "-0.015em",
+        color: C.text, lineHeight: 1.25,
+      }}>
+        {taskEvent?.topic ?? "Research pipeline"}
+      </h2>
+      <p style={{ margin: "0 0 1.25rem", fontSize: "0.78rem", color: C.textMut }}>
+        {isDone   ? "Pipeline complete"
+         : isFailed ? "Pipeline failed"
+         : "Executing workflow…"}
+        {" · "}job {params.jobId.slice(0, 8)}…
+      </p>
 
-      {/* Completion stats */}
-      {isDone && taskEvent && (
-        <>
-          <StatsGrid event={taskEvent} />
-          {taskEvent.review_id && (
-            <div style={{ marginBottom: "1.5rem" }}>
-              <Link href={`/review/${taskEvent.review_id}`} style={{
-                display: "inline-flex", alignItems: "center", gap: "0.5rem",
-                padding: "0.55rem 1.125rem",
-                background: C.blueDark,
-                color: "#fff",
-                borderRadius: 6,
-                textDecoration: "none",
-                fontSize: "0.875rem", fontWeight: 600,
-              }}>
-                View completed review →
-              </Link>
-            </div>
-          )}
-        </>
-      )}
+      {/* Status pill — only while running */}
+      {isLive && <StatusPill label={pillLabel} elapsed={elapsed} />}
 
-      {/* Error banner */}
+      {/* Failure banner */}
       {isFailed && (
-        <div style={{
-          padding: "0.875rem 1rem", marginBottom: "1.5rem",
-          background: "#2a1010", border: `1px solid ${C.red}50`, borderRadius: 8,
+        <div className="fade-in" style={{
+          padding: "0.875rem 1rem", marginBottom: "1.25rem",
+          background: "#fef5f5", border: `1px solid ${C.danger}25`, borderRadius: 12,
         }}>
-          <p style={{ color: C.red, margin: 0, fontSize: "0.875rem", fontWeight: 500 }}>
-            Pipeline failed: {taskEvent?.error ?? "unknown error"}
+          <p style={{ margin: 0, color: C.danger, fontSize: "0.875rem", fontWeight: 500 }}>
+            {taskEvent?.error ?? "An unexpected error occurred."}
           </p>
         </div>
       )}
 
-      {/* Step breakdown — only shown after completion */}
-      {(isDone || isFailed) && steps.length > 0 && (
-        <div>
-          <div style={{
-            display: "flex", alignItems: "center", gap: "0.5rem",
-            marginBottom: "0.625rem",
+      {/* Completion stats */}
+      {isDone && taskEvent && <StatsRow ev={taskEvent} />}
+
+      {/* View review button */}
+      {isDone && taskEvent?.review_id && (
+        <div style={{ marginBottom: "1.5rem" }}>
+          <Link href={`/review/${taskEvent.review_id}`} style={{
+            display: "inline-flex", alignItems: "center", gap: "0.4rem",
+            padding: "0.55rem 1.25rem",
+            background: C.accent, color: "#fff",
+            borderRadius: 9, textDecoration: "none",
+            fontSize: "0.875rem", fontWeight: 600,
+            boxShadow: "0 2px 10px rgba(255,107,0,0.25)",
           }}>
-            <span style={{
-              fontSize: "0.7rem", color: C.textSec,
-              textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700,
-            }}>
-              Agent steps ({steps.length})
-            </span>
-          </div>
-          {PHASES.map(phase => (
-            <PhaseAccordion key={phase.label} phase={phase} steps={steps} />
-          ))}
+            View synthesis →
+          </Link>
         </div>
       )}
+
+      {/* ── Workflow timeline card ────────────────────────────────────── */}
+      <div style={{
+        background: C.surface,
+        border: `1px solid ${C.border}`,
+        borderRadius: 16,
+        padding: "1.375rem 1.5rem 1rem",
+        boxShadow: "0 2px 16px rgba(0,0,0,0.05)",
+      }}>
+        {/* Card header */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: "0.5rem",
+          marginBottom: "1.375rem",
+          paddingBottom: "0.875rem",
+          borderBottom: `1px solid ${C.border}`,
+        }}>
+          {isLive && <span className="spinner" />}
+          {isDone && (
+            <span style={{ fontSize: "0.9rem" }}>✓</span>
+          )}
+          <span style={{ fontWeight: 600, fontSize: "0.9rem", color: C.text }}>
+            {isLive   ? "Executing workflow…"
+             : isDone ? "Workflow complete"
+             : isFailed ? "Workflow stopped"
+             : "Pipeline"}
+          </span>
+          {isDone && taskEvent?.total_duration_ms && (
+            <span style={{ fontSize: "0.75rem", color: C.textMut, marginLeft: 4 }}>
+              {(taskEvent.total_duration_ms / 1000).toFixed(1)}s total
+            </span>
+          )}
+        </div>
+
+        {/* Steps */}
+        {workflow.map((item, i) => (
+          <TimelineItem
+            key={item.id}
+            item={item}
+            isLast={i === workflow.length - 1}
+          />
+        ))}
+      </div>
     </main>
   );
 }
