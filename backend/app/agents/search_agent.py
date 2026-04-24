@@ -50,7 +50,8 @@ CRITICAL RULES — violating any of these will cause the search to fail:
 - Do NOT include arXiv IDs (e.g. "arXiv:quant-ph/0001234", "arXiv:cs.LG/...")
 - Do NOT include arXiv category tags (e.g. "[physics.comp-ph]", "[quant-ph]", "[eess.IV]")
 - Do NOT invent paper IDs or citation numbers of any kind
-- Do NOT use LaTeX, formulas, or special characters other than plain letters and numbers"""
+- Do NOT use LaTeX, formulas, or special characters other than plain letters and numbers
+- If the topic contains an unknown, invented, or nonsensical term (e.g. "ektromos", "zylorbium"), search for THAT EXACT TERM only — do NOT replace it with similar real scientific concepts. Preserve unusual words verbatim in every query."""
 
 
 class SearchAgent(BaseAgent):

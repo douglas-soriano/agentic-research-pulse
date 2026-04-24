@@ -9,6 +9,7 @@ Also drives the task lifecycle SSE stream:
 """
 import logging
 import time
+from datetime import datetime
 
 from app.agents.base import LLMCallBudget, init_llm_log
 
@@ -17,6 +18,7 @@ from app.agents.search_agent import SearchAgent
 from app.agents.extract_agent import ExtractAgent
 from app.agents.synthesis_agent import SynthesisAgent
 from app.config import settings
+from app.database import get_session, TopicRow
 from app.models.claim import Claim
 from app.models.review import ReviewCreate
 from app.services.paper_service import PaperService
@@ -32,6 +34,68 @@ class Orchestrator:
         self.paper_service = PaperService()
         self.review_service = ReviewService()
 
+    def _mark_topic_fetched(self, topic_id: str) -> None:
+        """Stamp last_fetched_at so the home page status dot turns green."""
+        try:
+            with get_session() as session:
+                topic = session.query(TopicRow).filter_by(id=topic_id).first()
+                if topic:
+                    topic.last_fetched_at = datetime.utcnow()
+                    session.commit()
+        except Exception as exc:
+            logger.warning("Orchestrator: could not update last_fetched_at for %s: %s", topic_id, exc)
+
+    @staticmethod
+    def _papers_are_relevant(topic: str, papers_meta: list[dict]) -> bool:
+        """Return False when arXiv fuzzy-matching returns unrelated results.
+
+        Extracts 'significant' tokens from the topic — tokens that contain a
+        digit, are all-caps (acronym), or are long enough to be domain-specific
+        (≥7 chars).  If at least one such token exists, every paper is checked:
+        if NONE of them mentions any significant token in title or abstract,
+        the results are considered irrelevant (e.g. topic = 'asdijon3').
+
+        Common topics without unusual tokens ('deep learning', 'neural networks')
+        always pass and are returned as relevant.
+        """
+        import re
+
+        _STOPWORDS = {
+            "for", "in", "of", "the", "a", "an", "and", "or", "with",
+            "on", "at", "to", "is", "are", "by", "from", "using", "via",
+            "based", "approach", "method", "methods", "new", "novel",
+        }
+
+        raw_tokens = re.findall(r"[A-Za-z0-9]+", topic)
+        significant: list[str] = []
+        for tok in raw_tokens:
+            low = tok.lower()
+            if low in _STOPWORDS:
+                continue
+            if (any(c.isdigit() for c in tok)          # contains digit: "asdijon3"
+                    or (tok.isupper() and len(tok) >= 2)  # acronym: "RAG", "BERT"
+                    or len(tok) >= 7):                    # long word: "ektromos"
+                significant.append(low)
+
+        if not significant:
+            # No unusual tokens — topic is ordinary prose, trust arXiv results
+            return True
+
+        # Check whether any paper mentions at least one significant token
+        for paper in papers_meta:
+            corpus = (
+                paper.get("title", "") + " " + paper.get("abstract", "")
+            ).lower()
+            if any(tok in corpus for tok in significant):
+                return True
+
+        logger.warning(
+            "Orchestrator: none of the significant tokens %s appear in any "
+            "returned paper — treating search as no results for topic %r",
+            significant, topic,
+        )
+        return False
+
     def run(self, topic_id: str, topic_name: str, max_papers: int = 8) -> dict:
         start_wall = time.monotonic()
         self.trace.start(self.job_id, topic_name)
@@ -45,6 +109,11 @@ class Orchestrator:
             # Phase 1: Search (3 sub-queries, merged)
             search_agent = SearchAgent(self.job_id, budget=budget)
             papers_meta = search_agent.run(topic_name, max_papers=max_papers)
+
+            # Relevance gate — discard results when arXiv fuzzy-search returns
+            # unrelated papers for an unknown/nonsense topic term.
+            if papers_meta and not self._papers_are_relevant(topic_name, papers_meta):
+                papers_meta = []
 
             if not papers_meta:
                 logger.warning("SearchAgent found no papers for topic: %r", topic_name)
@@ -68,6 +137,7 @@ class Orchestrator:
                         citations_rejected=0,
                     )
                 )
+                self._mark_topic_fetched(topic_id)
                 total_ms = int((time.monotonic() - start_wall) * 1000)
                 stats = {
                     "total_duration_ms": total_ms,
@@ -107,6 +177,7 @@ class Orchestrator:
                         citations_verified=0, citations_rejected=0,
                     )
                 )
+                self._mark_topic_fetched(topic_id)
                 total_ms = int((time.monotonic() - start_wall) * 1000)
                 stats = {"total_duration_ms": total_ms, "papers_processed": 0,
                          "claims_extracted": 0, "citations_verified": 0, "citations_rejected": 0}
@@ -161,6 +232,7 @@ class Orchestrator:
                 "citations_verified": synthesis_result["citations_verified"],
                 "citations_rejected": synthesis_result["citations_rejected"],
             }
+            self._mark_topic_fetched(topic_id)
             self.trace.complete(self.job_id, stats)
             stream_service.task_done(self.job_id, review_id=review.id, stats=stats)
             return {"review_id": review.id, **stats}

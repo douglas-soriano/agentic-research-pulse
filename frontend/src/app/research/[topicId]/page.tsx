@@ -135,26 +135,52 @@ function buildWorkflow(steps: TraceStep[], isLive: boolean): WorkflowItem[] {
     if (!s.tool) continue;
     (byTool[s.tool] ??= []).push(s);
   }
+
+  // Index of the latest tool seen in steps
   let lastIdx = -1;
   for (const s of steps) {
     const i = TOOL_SEQUENCE.indexOf(s.tool ?? "");
     if (i > lastIdx) lastIdx = i;
   }
-  const nextTool = TOOL_SEQUENCE[lastIdx + 1] ?? null;
 
-  return TOOL_SEQUENCE.map(tool => {
+  // Is the frontmost tool still accumulating (has steps, but no later tool has started yet)?
+  // If so, don't mark the *next* tool as "running" — it hasn't started yet.
+  const frontToolIsAccumulating =
+    lastIdx >= 0 &&
+    isLive &&
+    (byTool[TOOL_SEQUENCE[lastIdx]] ?? []).some(s => s.success) &&
+    !steps.some(s => TOOL_SEQUENCE.indexOf(s.tool ?? "") > lastIdx);
+
+  return TOOL_SEQUENCE.map((tool, toolIdx) => {
     const ts       = byTool[tool] ?? [];
     const hasDone  = ts.some(s => s.success);
     const hasFail  = ts.some(s => !s.success);
     const totalMs  = ts.reduce((a, s) => a + s.duration_ms, 0);
-    let status: StepStatus = "pending";
-    if (hasFail)  status = "failed";
-    else if (hasDone) status = "done";
-    else if (isLive && (tool === nextTool || (steps.length === 0 && tool === "plan_queries")))
-      status = "running";
 
-    const last     = ts[ts.length - 1];
-    const baseDesc = last ? describeStep(last) : (status === "running" ? "Working…" : "");
+    // A later stage has already produced steps → this one is truly finished
+    const hasLaterStarted = steps.some(
+      s => TOOL_SEQUENCE.indexOf(s.tool ?? "") > toolIdx
+    );
+
+    let status: StepStatus = "pending";
+    if (hasFail) {
+      status = "failed";
+    } else if (hasDone && (!isLive || hasLaterStarted)) {
+      // Done: pipeline finished, or a confirmed-later step proves we moved on
+      status = "done";
+    } else if (hasDone && isLive && !hasLaterStarted) {
+      // Still live, no later step yet → still accumulating (per-paper tools)
+      status = "running";
+    } else if (
+      isLive &&
+      !frontToolIsAccumulating &&        // ← key fix: don't pre-run next while front is busy
+      (tool === TOOL_SEQUENCE[lastIdx + 1] || (steps.length === 0 && tool === "plan_queries"))
+    ) {
+      status = "running";
+    }
+
+    const last      = ts[ts.length - 1];
+    const baseDesc  = last ? describeStep(last) : (status === "running" ? "Working…" : "");
     const isPerPaper = tool === "semantic_search" || tool === "extract_claims";
     const description = isPerPaper && ts.length > 0
       ? `${ts.length} paper${ts.length !== 1 ? "s" : ""} · ${baseDesc}` : baseDesc;
@@ -346,71 +372,133 @@ function SynthesisText({ text, citations }: { text: string; citations: Record<st
   );
 }
 
+// ── Subtle timestamp tooltip ───────────────────────────────────────────────
+function TimestampHover({ date, children, align = "right", block = false }: {
+  date: Date;
+  children: React.ReactNode;
+  align?: "left" | "right";
+  block?: boolean;
+}) {
+  const [hover, setHover] = useState(false);
+  const label = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+  return (
+    <div
+      style={{ position: "relative", display: block ? "block" : "inline-block" }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      {children}
+      {hover && (
+        <span style={{
+          position: "absolute",
+          top: "calc(100% + 5px)",
+          ...(align === "right" ? { right: 0 } : { left: 0 }),
+          background: "rgba(0,0,0,0.62)",
+          color: "#fff",
+          fontSize: "0.67rem",
+          padding: "0.18rem 0.48rem",
+          borderRadius: 5,
+          whiteSpace: "nowrap",
+          pointerEvents: "none",
+          zIndex: 40,
+          letterSpacing: "0.01em",
+        }}>
+          {label}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ── Animated waiting dots ──────────────────────────────────────────────────
+function WaitingDots() {
+  return (
+    <span style={{ display: "inline-flex", gap: "3px", alignItems: "center", marginTop: "0.75rem" }}>
+      {[0, 1, 2].map(i => (
+        <span
+          key={i}
+          className="dot-pulse"
+          style={{
+            width: 5, height: 5, borderRadius: "50%",
+            background: C.textMut,
+            display: "inline-block",
+            animationDelay: `${i * 0.18}s`,
+          }}
+        />
+      ))}
+    </span>
+  );
+}
+
 // ── Synthesis block ────────────────────────────────────────────────────────
 function SynthesisBlock({ review }: { review: Review }) {
   return (
     <div className="fade-in">
-      {/* Synthesis text */}
-      <div style={{
-        background: C.surface,
-        border: `1px solid ${C.border}`,
-        borderRadius: 14,
-        padding: "1.375rem 1.5rem",
-        lineHeight: 1.9, fontSize: "0.9rem", color: C.text,
-        boxShadow: "0 2px 12px rgba(0,0,0,0.04)",
-        whiteSpace: "pre-wrap",
-        marginBottom: review.cited_papers.length > 0 ? "1rem" : 0,
-      }}>
-        <SynthesisText text={review.synthesis} citations={review.citations} />
-        <p style={{ margin: "0.75rem 0 0", fontSize: "0.68rem", color: C.textMut }}>
-          Hover a numbered badge to preview the source · click to open on arXiv
-        </p>
-      </div>
-
-      {/* Sources */}
-      {review.cited_papers.length > 0 && (
-        <div>
-          <p style={{ margin: "0 0 0.5rem", fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: C.textMut }}>
-            Sources ({review.cited_papers.length})
+        {/* Synthesis text */}
+        <div style={{
+          background: C.surface,
+          border: `1px solid ${C.border}`,
+          borderRadius: 14,
+          padding: "1.375rem 1.5rem",
+          lineHeight: 1.9, fontSize: "0.9rem", color: C.text,
+          boxShadow: "0 2px 12px rgba(0,0,0,0.04)",
+          whiteSpace: "pre-wrap",
+          overflowWrap: "break-word",
+          wordBreak: "break-word",
+          minWidth: 0,
+          marginBottom: review.cited_papers.length > 0 ? "1rem" : 0,
+        }}>
+          <SynthesisText text={review.synthesis} citations={review.citations} />
+          <p style={{ margin: "0.75rem 0 0", fontSize: "0.68rem", color: C.textMut }}>
+            Hover a numbered badge to preview the source · click to open on arXiv
           </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
-            {review.cited_papers.map((p, i) => (
-              <div key={p.paper_id} style={{
-                display: "flex", alignItems: "center", gap: "0.75rem",
-                padding: "0.75rem 0.875rem",
-                background: C.surface, border: `1px solid ${C.border}`,
-                borderRadius: 10, boxShadow: "0 1px 4px rgba(0,0,0,0.03)",
-              }}>
-                <span style={{
-                  width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
-                  background: "#f0f0ee", border: "1px solid rgba(0,0,0,0.08)",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: "0.68rem", fontWeight: 700, color: C.textMut,
-                }}>{i + 1}</span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <a href={`https://arxiv.org/abs/${p.arxiv_id}`} target="_blank" rel="noreferrer" style={{
-                    color: C.text, textDecoration: "none", fontWeight: 600,
-                    fontSize: "0.85rem", display: "block",
-                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                  }}>
-                    {p.title}
-                  </a>
-                  <p style={{ margin: "0.15rem 0 0", color: C.textMut, fontSize: "0.7rem" }}>
-                    {p.authors.slice(0, 3).join(", ")} · <span style={{ color: C.info }}>arXiv:{p.arxiv_id}</span>
-                  </p>
-                </div>
-                <span style={{
-                  padding: "0.15rem 0.5rem", background: "#f5f5f3",
-                  border: "1px solid rgba(0,0,0,0.07)", borderRadius: 20,
-                  fontSize: "0.7rem", color: C.textSec, whiteSpace: "nowrap", flexShrink: 0,
-                }}>
-                  {p.chunk_ids.length} passage{p.chunk_ids.length !== 1 ? "s" : ""}
-                </span>
-              </div>
-            ))}
-          </div>
         </div>
-      )}
+
+        {/* Sources */}
+        {review.cited_papers.length > 0 && (
+          <div>
+            <p style={{ margin: "0 0 0.5rem", fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: C.textMut }}>
+              Sources ({review.cited_papers.length})
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+              {review.cited_papers.map((p, i) => (
+                <div key={p.paper_id} style={{
+                  display: "flex", alignItems: "center", gap: "0.75rem",
+                  padding: "0.75rem 0.875rem",
+                  background: C.surface, border: `1px solid ${C.border}`,
+                  borderRadius: 10, boxShadow: "0 1px 4px rgba(0,0,0,0.03)",
+                }}>
+                  <span style={{
+                    width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
+                    background: "#f0f0ee", border: "1px solid rgba(0,0,0,0.08)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: "0.68rem", fontWeight: 700, color: C.textMut,
+                  }}>{i + 1}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <a href={`https://arxiv.org/abs/${p.arxiv_id}`} target="_blank" rel="noreferrer" style={{
+                      color: C.text, textDecoration: "none", fontWeight: 600,
+                      fontSize: "0.85rem", display: "block",
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    }}>
+                      {p.title}
+                    </a>
+                    <p style={{ margin: "0.15rem 0 0", color: C.textMut, fontSize: "0.7rem" }}>
+                      {p.authors.slice(0, 3).join(", ")} · <span style={{ color: C.info }}>arXiv:{p.arxiv_id}</span>
+                    </p>
+                  </div>
+                  <span style={{
+                    padding: "0.15rem 0.5rem", background: "#f5f5f3",
+                    border: "1px solid rgba(0,0,0,0.07)", borderRadius: 20,
+                    fontSize: "0.7rem", color: C.textSec, whiteSpace: "nowrap", flexShrink: 0,
+                  }}>
+                    {p.chunk_ids.length} passage{p.chunk_ids.length !== 1 ? "s" : ""}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
     </div>
   );
 }
@@ -419,8 +507,10 @@ function SynthesisBlock({ review }: { review: Review }) {
 function ResearchPageInner({ topicId }: { topicId: string }) {
   const searchParams   = useSearchParams();
   const jobId          = searchParams.get("job");
+  const nameParam      = searchParams.get("name");
 
-  const [topicName,      setTopicName]      = useState("");
+  // topicName: seeded from URL param immediately (no flash of ID)
+  const [topicName,      setTopicName]      = useState(nameParam ? decodeURIComponent(nameParam) : "");
   const [pipelineStatus, setPipelineStatus] = useState<string>(jobId ? "connecting" : "done");
   const [steps,          setSteps]          = useState<TraceStep[]>([]);
   const [taskEvent,      setTaskEvent]      = useState<TaskEvent | null>(null);
@@ -428,8 +518,8 @@ function ResearchPageInner({ topicId }: { topicId: string }) {
   const [elapsed,        setElapsed]        = useState(0);
   const [reasoningOpen,  setReasoningOpen]  = useState(true);
 
-  const startRef        = useRef<number | null>(null);
-  const autoCollapsed   = useRef(false);
+  const startRef      = useRef<number | null>(null);
+  const autoCollapsed = useRef(false);
 
   // ── Poll for review ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -460,7 +550,6 @@ function ResearchPageInner({ topicId }: { topicId: string }) {
         if (ev.event === "started" && !startRef.current) startRef.current = Date.now();
         if ((ev.event === "done" || ev.event === "failed") && !autoCollapsed.current) {
           autoCollapsed.current = true;
-          // Auto-collapse reasoning 1.5s after pipeline finishes
           setTimeout(() => setReasoningOpen(false), 1500);
           taskEs.close();
         }
@@ -516,19 +605,30 @@ function ResearchPageInner({ topicId }: { topicId: string }) {
   const displayName = topicName || topicId;
 
   return (
-    <main style={{ maxWidth: 700 }}>
+    <main>
       {/* Back nav */}
       <Link href="/" style={{ color: C.textMut, fontSize: "0.78rem", textDecoration: "none", display: "inline-block", marginBottom: "1.5rem" }}>
         ← New research
       </Link>
 
-      {/* ── User bubble ───────────────────────────────────────────────── */}
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "1.25rem" }}>
+      {/*
+        Layout contract:
+        - Avatar is 28px wide, gap is 0.75rem → content column starts at calc(28px + 0.75rem)
+        - User bubble row uses the same left padding so its right edge = content column right edge
+        - All cards (reasoning, synthesis, sources) naturally share the same width inside the column
+      */}
+
+      {/* ── User bubble — offset left by avatar+gap so right edges align ── */}
+      <div style={{
+        display: "flex", justifyContent: "flex-end",
+        marginBottom: "1.25rem",
+        paddingLeft: "calc(28px + 0.75rem)",
+      }}>
         <div style={{
           background: C.accent, color: "#fff",
           padding: "0.75rem 1.125rem",
           borderRadius: "18px 18px 4px 18px",
-          maxWidth: "78%",
+          maxWidth: "88%",
           fontSize: "0.95rem", fontWeight: 500, lineHeight: 1.4,
           boxShadow: "0 2px 12px rgba(255,107,0,0.18)",
         }}>
@@ -548,7 +648,7 @@ function ResearchPageInner({ topicId }: { topicId: string }) {
           RP
         </div>
 
-        {/* Content column */}
+        {/* Content column — reasoning + synthesis + sources all same width */}
         <div style={{ flex: 1, minWidth: 0 }}>
 
           {/* ── Reasoning card ────────────────────────────────────────── */}
@@ -570,35 +670,29 @@ function ResearchPageInner({ topicId }: { topicId: string }) {
                 textAlign: "left",
               }}
             >
-              {/* Status icon */}
               {isLive   && <span className="spinner-sm" />}
               {isDone   && <span style={{ fontSize: "0.8rem", color: C.success }}>✓</span>}
               {isFailed && <span style={{ fontSize: "0.8rem", color: C.danger }}>✗</span>}
               {!isLive && !isDone && !isFailed && <span className="spinner-sm" />}
 
-              {/* "Reasoning" / "Reasoned" label */}
               <span style={{ fontSize: "0.82rem", fontStyle: "italic", color: C.textSec, flexShrink: 0 }}>
                 {isLive ? "Reasoning…" : "Reasoned"}
               </span>
 
-              {/* One-liner summary */}
               <span style={{
-                fontSize: "0.8rem",
-                color: C.textMut,
+                fontSize: "0.8rem", color: C.textMut,
                 overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                 flex: 1,
               }}>
                 — {reasoningOneLiner}
               </span>
 
-              {/* Elapsed (live only) */}
               {isLive && elapsed > 0 && (
                 <span style={{ fontSize: "0.73rem", color: C.textMut, flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>
                   {elapsed}s
                 </span>
               )}
 
-              {/* Chevron */}
               <span style={{ color: C.textMut, fontSize: "0.65rem", flexShrink: 0 }}>
                 {reasoningOpen ? "▲" : "▼"}
               </span>
@@ -628,24 +722,22 @@ function ResearchPageInner({ topicId }: { topicId: string }) {
           {/* ── Synthesis ─────────────────────────────────────────────── */}
           {review && <SynthesisBlock review={review} />}
 
+          {/* ── Waiting for synthesis (live, no review yet) ───────────── */}
+          {isLive && !review && (
+            <WaitingDots />
+          )}
+
           {/* ── Failed state (no review) ──────────────────────────────── */}
           {isFailed && !review && (
             <div className="fade-in" style={{
               padding: "0.875rem 1rem",
               background: "#fef5f5", border: `1px solid ${C.danger}25`,
-              borderRadius: 12, marginTop: 0,
+              borderRadius: 12, marginTop: "0.5rem",
             }}>
               <p style={{ margin: 0, color: C.danger, fontSize: "0.875rem" }}>
                 {taskEvent?.error ?? "The pipeline encountered an error."}
               </p>
             </div>
-          )}
-
-          {/* ── Waiting for synthesis ─────────────────────────────────── */}
-          {isLive && !review && (
-            <p style={{ margin: "0.75rem 0 0", fontSize: "0.78rem", color: C.textMut }}>
-              Synthesis will appear here when the pipeline completes…
-            </p>
           )}
         </div>
       </div>
