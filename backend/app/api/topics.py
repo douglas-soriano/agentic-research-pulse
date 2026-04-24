@@ -26,6 +26,7 @@ class TopicListItem(BaseModel):
     id: str
     name: str
     last_fetched_at: datetime | None
+    latest_job_id: str | None = None
     created_at: datetime
 
 
@@ -42,11 +43,13 @@ def create_topic(req: TopicRequest):
 @router.get("", response_model=list[TopicListItem])
 def list_topics():
     topics = pipeline.list_topics()
+    job_ids = pipeline.latest_job_ids([t.name for t in topics])
     return [
         TopicListItem(
             id=t.id,
             name=t.name,
             last_fetched_at=t.last_fetched_at,
+            latest_job_id=job_ids.get(t.name),
             created_at=t.created_at,
         )
         for t in topics

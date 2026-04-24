@@ -5,7 +5,7 @@ and returns job handles. Separates the HTTP request lifecycle from long-running 
 import uuid
 from datetime import datetime
 
-from app.database import get_session, TopicRow
+from app.database import get_session, TopicRow, TraceRow
 from app.services.stream_service import stream_service
 
 
@@ -46,3 +46,21 @@ class ResearchPipeline:
             for t in topics:
                 session.expunge(t)
             return topics
+
+    def latest_job_ids(self, topic_names: list[str]) -> dict[str, str]:
+        """Return {topic_name: latest_job_id} for the given topic names."""
+        if not topic_names:
+            return {}
+        with get_session() as session:
+            rows = (
+                session.query(TraceRow.topic, TraceRow.job_id)
+                .filter(TraceRow.topic.in_(topic_names))
+                .order_by(TraceRow.created_at.desc())
+                .all()
+            )
+        # First occurrence per topic is the most recent (desc order)
+        result: dict[str, str] = {}
+        for topic_name, job_id in rows:
+            if topic_name not in result:
+                result[topic_name] = job_id
+        return result
