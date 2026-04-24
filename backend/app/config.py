@@ -6,6 +6,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 _GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 _GEMINI_DEFAULT_MODEL = "gemini-2.0-flash"
 
+_OPENAI_BASE_URL = "https://api.openai.com/v1"
+_OPENAI_DEFAULT_MODEL = "gpt-4o-mini"
+
 _LOCAL_BASE_URL = "http://host.docker.internal:11434/v1"
 _LOCAL_DEFAULT_MODEL = "qwen2.5:7b"
 
@@ -24,6 +27,11 @@ class Settings(BaseSettings):
     # Set LLM_PROVIDER=gemini (default) or LLM_PROVIDER=local in .env
     llm_provider: str = "gemini"
     gemini_api_key: str = ""
+
+    # Second cloud step in the chain (Gemini → ChatGPT → local) when OPENAI_API_KEY is set
+    openai_api_key: str = ""
+    openai_base_url: str = ""
+    openai_model: str = ""
 
     # Resolved by the validator below — do not set these manually when using a provider
     llm_base_url: str = ""
@@ -46,8 +54,9 @@ class Settings(BaseSettings):
     max_llm_calls_per_job: int = 60
 
     def get_provider_chain(self) -> list[ProviderConfig]:
-        """Returns [primary, fallback]. Primary = configured LLM_PROVIDER.
-        Fallback = local Ollama, unless primary already is local."""
+        """Provider order when LLM_PROVIDER=gemini:
+        Gemini → OpenAI (ChatGPT-compatible API) → local Ollama, if keys are set.
+        Without OPENAI_API_KEY, chain is Gemini → local."""
         primary = ProviderConfig(
             base_url=self.llm_base_url,
             api_key=self.llm_api_key,
@@ -56,13 +65,30 @@ class Settings(BaseSettings):
         )
         if self.llm_provider == "local":
             return [primary]
-        fallback = ProviderConfig(
-            base_url=_LOCAL_BASE_URL,
-            api_key="ollama",
-            model=_LOCAL_DEFAULT_MODEL,
-            name="local",
+
+        chain: list[ProviderConfig] = [primary]
+
+        if self.llm_provider == "gemini" and self.openai_api_key.strip():
+            ob_url = self.openai_base_url.strip() or _OPENAI_BASE_URL
+            o_model = self.openai_model.strip() or _OPENAI_DEFAULT_MODEL
+            chain.append(
+                ProviderConfig(
+                    base_url=ob_url,
+                    api_key=self.openai_api_key,
+                    model=o_model,
+                    name="chatgpt",
+                )
+            )
+
+        chain.append(
+            ProviderConfig(
+                base_url=_LOCAL_BASE_URL,
+                api_key="ollama",
+                model=_LOCAL_DEFAULT_MODEL,
+                name="local",
+            )
         )
-        return [primary, fallback]
+        return chain
 
     @model_validator(mode="after")
     def resolve_llm_config(self) -> "Settings":

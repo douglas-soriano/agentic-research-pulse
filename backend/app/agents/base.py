@@ -121,7 +121,14 @@ class BaseAgent:
                 msg = str(exc).lower()
                 return "resource exhausted" in msg or "quota" in msg
         msg = str(exc).lower()
-        return "resource exhausted" in msg or "quota" in msg or "invalid api key" in msg
+        return (
+            "resource exhausted" in msg
+            or "quota" in msg
+            or "invalid api key" in msg
+            or "invalid_api_key" in msg
+            or "incorrect api key" in msg
+            or "insufficient_quota" in msg
+        )
 
     def _retry_delay(self, exc: BaseException, attempt: int) -> float:
         if isinstance(exc, APIStatusError) and exc.response is not None:

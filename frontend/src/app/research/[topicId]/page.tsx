@@ -95,6 +95,19 @@ const TOOL_SEQUENCE = [
   "verify_citations", "synthesize",
 ];
 
+/** Pretty labels for provider names stored in trace steps */
+const PROVIDER_DISPLAY: Record<string, string> = {
+  gemini: "Gemini",
+  chatgpt: "ChatGPT",
+  openai: "ChatGPT",
+  local: "Local (Ollama)",
+};
+
+function displayProviderName(name: string): string {
+  const k = name.toLowerCase();
+  return PROVIDER_DISPLAY[k] ?? name;
+}
+
 function describeStep(step: TraceStep): string {
   const out = step.output as Record<string, unknown>;
   switch (step.tool) {
@@ -310,9 +323,9 @@ function TimelineItem({ item, isLast }: { item: WorkflowItem; isLast: boolean })
                 }}
               >
                 <span style={{ position: "absolute", left: -10, color: C.textMut, fontStyle: "normal" }}>→</span>
-                Primary provider <span style={{ fontStyle: "normal", fontWeight: 600 }}>{fb.from}</span>
+                <span style={{ fontStyle: "normal", fontWeight: 600 }}>{displayProviderName(fb.from)}</span>
                 {" "}was unavailable — continued with{" "}
-                <span style={{ fontStyle: "normal", fontWeight: 600 }}>{fb.to}</span>
+                <span style={{ fontStyle: "normal", fontWeight: 600 }}>{displayProviderName(fb.to)}</span>
                 {fb.count > 1 ? ` (${fb.count} LLM calls in this step).` : "."}
               </li>
             ))}
