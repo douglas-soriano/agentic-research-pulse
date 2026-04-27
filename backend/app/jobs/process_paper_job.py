@@ -1,9 +1,15 @@
 """
 process_paper_job — fetch, chunk, and embed a single paper.
-Called per-paper during the pipeline; can be enqueued individually for reruns.
+
+Idempotent: checks ChromaDB before embedding to avoid re-processing
+an already ingested paper. Safe to retry or re-enqueue without side effects.
 """
+import structlog
 from celery_worker import celery_app
 from app.services.paper_service import PaperService
+from app.tools.vector_tools import paper_has_chunks
+
+logger = structlog.get_logger(__name__)
 
 
 @celery_app.task(
@@ -14,6 +20,22 @@ from app.services.paper_service import PaperService
     acks_late=True,
 )
 def process_paper(self, paper_meta: dict, topic_id: str) -> dict:
+    arxiv_id = paper_meta.get("arxiv_id", "")
+
+    # Idempotency check: if ChromaDB already has chunks for this paper,
+    # skip all processing and return immediately. This makes every retry safe.
+    if arxiv_id and paper_has_chunks(arxiv_id):
+        logger.info(
+            "paper_skipped_already_embedded",
+            arxiv_id=arxiv_id,
+            step="idempotency_check",
+        )
+        return {
+            "arxiv_id": arxiv_id,
+            "skipped": True,
+            "reason": "already_in_chromadb",
+        }
+
     try:
         service = PaperService()
         paper = service.ingest(paper_meta, topic_id)
@@ -24,4 +46,10 @@ def process_paper(self, paper_meta: dict, topic_id: str) -> dict:
             "chunk_count": paper.chunk_count,
         }
     except Exception as exc:
+        logger.warning(
+            "process_paper_failed",
+            arxiv_id=arxiv_id,
+            attempt=self.request.retries,
+            error=str(exc),
+        )
         raise self.retry(exc=exc)

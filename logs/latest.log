@@ -1,11 +1,11 @@
 ========================================================================
-PIPELINE START: Mixture of experts language models
-Job ID:         0c19f225-d21f-4620-b46f-80e13070520f
-Started at:     2026-04-27 04:23:01 UTC
+PIPELINE START: Large language model alignment techniques
+Job ID:         960309fd-54ae-4df0-ada9-aae6451e5fd0
+Started at:     2026-04-27 04:59:26 UTC
 ========================================================================
 
 ========================================================================
-[04:23:03] search_agent  structured=QueryPlan  budget=1/60
+[04:59:27] search_agent  structured=QueryPlan  budget=1/60
 ========================================================================
 --- MESSAGES SENT ---
 [SYSTEM]
@@ -25,53 +25,17 @@ CRITICAL RULES — violating any of these will cause the search to fail:
 - Use ONLY descriptive keywords (e.…
 
 [USER]
-Topic: Mixture of experts language models
+Topic: Large language model alignment techniques
 
 Generate 3 diverse arXiv search queries. Return JSON only.
 
 --- RESPONSE ---
 [QueryPlan]
-{"queries":["mixture of experts routing algorithm sparse activation","mixture of experts language model applications natural language processing","mixture of experts benchmark evaluation survey performance limitations"]}
+{"queries":["reinforcement learning from human feedback language model preference optimization","constitutional AI red teaming safety robustness fairness large language model","interpretability explainability bias detection mitigation alignment language model survey"]}
 
 
 ========================================================================
-[04:23:25] extract_agent  structured=ClaimsOutput  budget=2/60
-========================================================================
---- MESSAGES SENT ---
-[SYSTEM]
-You are a scientific claim extraction assistant.
-
-You will receive a list of text chunks from a research paper, each labeled with an index number.
-
-For each chunk that contains meaningful scientific content (findings, methods, contributions, or limitations),
-write a concise 1–2 sentence claim summarising the key point.
-
-Skip chunks that are:
-- Navigation text, headers, or HTML boilerplate
-- Reference lists or citations only
-- Very short or uninformative
-
-Return ONLY this JSON — no prose, no markdown:
-{"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
-
-[USER]
-Paper: Not All Experts are Equal: Efficient Expert Pruning and Skipping for Mixture-of-Experts Large Language Models
-Authors: Xudong Lu, Qi Liu, Yuhui Xu
-Abstract: A pivotal advancement in the progress of large language models (LLMs) is the emergence of the Mixture-of-Experts (MoE) LLMs. Compared to traditional LLMs, MoE LLMs can achieve higher performance with fewer parameters, but it is still hard to deploy them due to their immense parameter sizes. Differen
-
-Chunks (6 total):
-[
-  {
-    "index": 0,
-    "text": "[2402.14800] Not All Experts are Equal: Efficient Expert Pruning and Skipping for…
-
---- RESPONSE ---
-[ClaimsOutput]
-{"claims":[{"index":1,"text":"The proposed method reduces memory usage and improves inference speed for more efficient deployment of MoE LLMs.","category":"contribution","confidence":0.9},{"index":1,"text":"The expert pruning method is based on enumeration of expert combinations, which becomes cumbersome with an increasing number of experts per MoE layer.","category":"limitation","confidence":0.8},{"index":4,"text":"The method investigates how to prune less important experts while maintaining satisfactory performance, utilizing an efficient post-training approach to minimize token reconstruction loss in a layer-by-layer manner.","category":"method","confidence":0.9},{"index":4,"text":"The approach enumerates and chooses combinations of experts that yield the lowest token reconstruction los…
-
-
-========================================================================
-[04:23:28] extract_agent  structured=ClaimsOutput  budget=3/60
+[04:59:42] extract_agent  structured=ClaimsOutput  budget=2/60
 ========================================================================
 --- MESSAGES SENT ---
 [SYSTEM]
@@ -91,23 +55,23 @@ Return ONLY this JSON — no prose, no markdown:
 {"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
 
 [USER]
-Paper: Generalizing GNNs with Tokenized Mixture of Experts
-Authors: Xiaoguang Guo, Zehong Wang, Jiazheng Li
-Abstract: Deployed graph neural networks (GNNs) are frozen at deployment yet must fit clean data, generalize under distribution shifts, and remain stable to perturbations. We show that static inference induces a fundamental tradeoff: improving stability requires reducing reliance on shift-sensitive features, 
+Paper: Making Large Language Models Better Reasoners with Alignment
+Authors: Peiyi Wang, Lei Li, Liang Chen
+Abstract: Reasoning is a cognitive process of using evidence to reach a sound conclusion. The reasoning capability is essential for large language models (LLMs) to serve as the brain of the artificial general intelligence agent. Recent studies reveal that fine-tuning LLMs on data with the chain of thought (CO
 
 Chunks (5 total):
 [
   {
     "index": 0,
-    "text": "[2602.09258] Generalizing GNNs with Tokenized Mixture of Experts Generalizing GNNs with Tokenized Mixture of Experts Xiaoguang …
+    "text": "[2309.02144] Making Large Language Models Better Reasoners with Alignment Making Large Language Models Better Reasoners with Al…
 
 --- RESPONSE ---
 [ClaimsOutput]
-{"claims":[{"index":1,"text":"The paper proposes STEM-GNN, a pretrain-then-finetune GNN framework for robust instance-conditional inference under frozen deployment, which uses an MoE encoder, VQ token interface, and Lipschitz-regularized prediction head.","category":"contribution","confidence":0.9},{"index":2,"text":"The paper decomposes OOD risk into mechanism coverage and selection quality, and decomposes stability risk into routing-fixed sensitivity and drift amplification, revealing precise levers absent in the static case.","category":"finding","confidence":0.8},{"index":2,"text":"STEM-GNN instantiates robust ICC for graph learning through three tightly coupled designs: (1) MoE Encoder for Coverage Expansion.","category":"method","confidence":0.8},{"index":3,"text":"GNNs learn functio…
+{"claims":[{"index":2,"text":"Vanilla fine-tuned LLMs with chain-of-thought reasoning suffer from an assessment misalignment problem, hindering their reasoning ability.","category":"finding","confidence":0.9},{"index":2,"text":"An alignment fine-tuning (AFT) paradigm is proposed with a novel constraint alignment loss that aligns model assessment behaviors without harming model performance.","category":"method","confidence":0.9},{"index":3,"text":"Experiments demonstrate the effectiveness of AFT on four reasoning benchmarks with binary and ranking feedback, showing good performance in multi-task and out-of-distribution situations.","category":"finding","confidence":0.9},{"index":4,"text":"An alignment fine-tuning (AFT) paradigm is proposed to improve LLM reasoning, involving fine-tuning LLM…
 
 
 ========================================================================
-[04:23:31] extract_agent  structured=ClaimsOutput  budget=4/60
+[04:59:44] extract_agent  structured=ClaimsOutput  budget=3/60
 ========================================================================
 --- MESSAGES SENT ---
 [SYSTEM]
@@ -127,23 +91,23 @@ Return ONLY this JSON — no prose, no markdown:
 {"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
 
 [USER]
-Paper: ExpertFlow: Efficient Mixture-of-Experts Inference via Predictive Expert Caching and Token Scheduling
-Authors: Xin He, Shunkang Zhang, Kaijie Tang
-Abstract: Sparse Mixture-of-Experts (MoE) models can outperform dense large language models at similar computation by activating only a small set of experts per token. However, stacking many expert modules introduces substantial parameter memory, which makes MoE models difficult to deploy in memory-constraine
+Paper: ASSERT: Automated Safety Scenario Red Teaming for Evaluating the Robustness of Large Language Models
+Authors: Alex Mei, Sharon Levy, William Yang Wang
+Abstract: As large language models are integrated into society, robustness toward a suite of prompts is increasingly important to maintain reliability in a high-variance environment.Robustness evaluations must comprehensively encapsulate the various settings in which a user may invoke an intelligent system. T
 
 Chunks (5 total):
 [
   {
     "index": 0,
-    "text": "[2410.17954] ExpertFlow: Optimized Expert Activation and Token Allocation for Eff…
+    "text": "[2310.09624] Assert: Automated Safety Scenario Red Teaming for Evaluating the…
 
 --- RESPONSE ---
 [ClaimsOutput]
-{"claims":[{"index":1,"text":"The proposed Token Scheduler reduces I/O overhead by decreasing expert loads and enhances computational efficiency by optimizing token assignments.","category":"contribution","confidence":0.9},{"index":2,"text":"ExpertFlow incorporates predictive routing and strategic caching to optimize memory usage and accelerate inference in Mixture-of-Experts (MoE) models.","category":"contribution","confidence":0.9},{"index":2,"text":"ExpertFlow consists of a Routing Path Predictor, an Expert Cache Engine, and a Token Scheduler to improve cache efficiency and enhance expert scheduling.","category":"method","confidence":0.9},{"index":3,"text":"The system integrates a MoE Routing Path Predictor, Expert Cache Engine, and Token Scheduler to address challenges associated with …
+{"claims":[{"index":2,"text":"It is essential to develop systems that are robust in all settings, including semantically similar scenarios and adversarial prompts, to mitigate the potential of users’ physical harm in critical domains such as AI safety.","category":"contribution","confidence":0.9},{"index":3,"text":"The automated methods for generating robustness evaluation samples can be dependent on human intervention, particularly in the semantically aligned augmentation and adversarial knowledge injection settings.","category":"limitation","confidence":0.85},{"index":4,"text":"The study is limited by its focus on the domain of AI safety and the reliance on the SafeText dataset, which restricts the number of samples available for analysis.","category":"limitation","confidence":0.9}]}
 
 
 ========================================================================
-[04:23:32] extract_agent  structured=ClaimsOutput  budget=5/60
+[04:59:47] extract_agent  structured=ClaimsOutput  budget=4/60
 ========================================================================
 --- MESSAGES SENT ---
 [SYSTEM]
@@ -163,59 +127,23 @@ Return ONLY this JSON — no prose, no markdown:
 {"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
 
 [USER]
-Paper: Gradient-based learning applied to document recognition
-Authors: Yann LeCun, Léon Bottou, Yoshua Bengio
-Abstract: Multilayer neural networks trained with the back-propagation algorithm constitute the best example of a successful gradient based learning technique. Given an appropriate network architecture, gradient-based learning algorithms can be used to synthesize a complex decision surface that can classify h
+Paper: Online Iterative Reinforcement Learning from Human Feedback with General Preference Model
+Authors: Chenlu Ye, Wei Xiong, Yuheng Zhang
+Abstract: We investigate Reinforcement Learning from Human Feedback (RLHF) in the context of a general preference oracle. In particular, we do not assume the existence of a reward function and an oracle preference signal drawn from the Bradley-Terry model as most of the prior works do. We consider a standard 
 
-Chunks (1 total):
+Chunks (5 total):
 [
   {
     "index": 0,
-    "text": "Multilayer neural networks trained with the back-propagation algorithm constitute the best example of a successful gradient …
+    "text": "batch online learning from iterative interactions with a preference oracle, our proposed algor…
 
 --- RESPONSE ---
 [ClaimsOutput]
-{"claims":[{"index":0,"text":"Multilayer neural networks with back-propagation are a successful gradient-based learning technique for classifying high-dimensional patterns.","category":"finding","confidence":0.9}]}
+{"claims":[{"index":0,"text":"The proposed algorithm enjoys a finite sample guarantee under the structural condition of the underlying preference model in batch online learning from iterative interactions with a preference oracle. The results connect the new NLHF paradigm with traditional RL theory, and validate the potential of reward-model-free learning under general preference.","category":"contribution","confidence":0.9},{"index":2,"text":"This work considers the relative preference, consistent with reward-based RLHF under the BT model, and the output policy of the proposed algorithm can automatically adapt to the reward-maximization scenario.","category":"method","confidence":0.85},{"index":3,"text":"Preference model construction demonstrates significant practical efficiency compared …
 
 
 ========================================================================
-[04:23:33] extract_agent  structured=ClaimsOutput  budget=6/60
-========================================================================
---- MESSAGES SENT ---
-[SYSTEM]
-You are a scientific claim extraction assistant.
-
-You will receive a list of text chunks from a research paper, each labeled with an index number.
-
-For each chunk that contains meaningful scientific content (findings, methods, contributions, or limitations),
-write a concise 1–2 sentence claim summarising the key point.
-
-Skip chunks that are:
-- Navigation text, headers, or HTML boilerplate
-- Reference lists or citations only
-- Very short or uninformative
-
-Return ONLY this JSON — no prose, no markdown:
-{"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
-
-[USER]
-Paper: DeepSeekMoE: Towards Ultimate Expert Specialization in Mixture-of-Experts Language Models
-Authors: Damai Dai, Chengqi Deng, Chenggang Zhao
-Abstract: Damai Dai, Chengqi Deng, Chenggang Zhao, R.x. Xu, Huazuo Gao, Deli Chen, Jiashi Li, Wangding Zeng, Xingkai Yu, Y. Wu, Zhenda Xie, Y.k. Li, Panpan Huang, Fuli Luo, Chong Ruan, Zhifang Sui, Wenfeng Liang. Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (Volume 1
-
-Chunks (1 total):
-[
-  {
-    "index": 0,
-    "text": "Damai Dai, Chengqi Deng, Chenggang Zhao, R.x. Xu, Huazuo Gao, Deli Chen, Jiashi Li, Wangd…
-
---- RESPONSE ---
-[ClaimsOutput]
-{"claims":[]}
-
-
-========================================================================
-[04:23:44] synthesis_agent  structured=SynthesisOutput  budget=7/60
+[04:59:57] synthesis_agent  structured=SynthesisOutput  budget=5/60
 ========================================================================
 --- MESSAGES SENT ---
 [SYSTEM]
@@ -237,21 +165,21 @@ RULES:
 - Place each [citation_XXXX] token immed…
 
 [USER]
-Topic: 'Mixture of experts language models'
+Topic: 'Large language model alignment techniques'
 
-Pre-verified claims (18 total):
+Pre-verified claims (11 total):
 [
   {
     "citation": "[citation_0001]",
-    "text": "The proposed method reduces memory usage and improves inference speed for more efficient deployment of MoE LLMs.",
-    "category": "contribution",
-    "paper_title": "Not All Experts are Equal: Efficient Expert Pruning and Skipping for Mixture-of-Experts Large Language Models"
+    "text": "Vanilla fine-tuned LLMs with chain-of-thought reasoning suffer from an assessment misalignment problem, hindering their reasoning ability.",
+    "category": "finding",
+    "paper_title": "Making Large Language Models Better Reasoners with Alignment"
   },
   {
     "citation": "[citation_0002]",
-    "text": "The expert pruning method is based on enumeration of expert combinations, which becomes cumbersome with an increasing number of expert…
+    "text": "An alignment fine-tuning (AFT) paradigm is proposed with a novel constraint alignment loss that aligns model assessment behaviors without harming model per…
 
 --- RESPONSE ---
 [SynthesisOutput]
-{"synthesis":"Mixture of Experts (MoE) models have emerged as a promising approach to scale language models, but their deployment faces challenges related to memory usage, inference speed, and routing efficiency. Recent research focuses on addressing these challenges through various techniques, including expert pruning and skipping, predictive caching, and token scheduling [citation_0001, citation_0013]. These methods aim to optimize the trade-off between model performance and computational cost, enabling more efficient deployment of MoE models. \n\nOne line of work focuses on pruning less important experts to reduce memory footprint and accelerate inference [citation_0003]. This involves identifying and removing redundant experts while maintaining satisfactory performance [citation_0003].…
+{"synthesis":"Large language model (LLM) alignment is a crucial area of research aimed at ensuring that these models behave safely, ethically, and in accordance with human values. Current state-of-the-art reward models, often used in reinforcement learning from human feedback (RLHF), achieve limited accuracy, typically around 70-80% [citation_0011]. This limitation motivates the exploration of alternative alignment techniques, such as directly optimizing for preferences [citation_0009].\n\nOne promising approach involves alignment fine-tuning (AFT), designed to improve LLM reasoning capabilities [citation_0004]. AFT addresses the assessment misalignment problem observed in vanilla fine-tuned LLMs using chain-of-thought (COT) reasoning, which can hinder their reasoning ability [citation_000…
 

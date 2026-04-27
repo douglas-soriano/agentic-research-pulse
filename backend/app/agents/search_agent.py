@@ -18,6 +18,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable
 
+
+
 import structlog
 
 from app.agents.base import BaseAgent, LLMCallBudget
@@ -51,6 +53,14 @@ CRITICAL RULES — violating any of these will cause the search to fail:
 
 _FETCH_PER_QUERY = 8
 
+# Hard cap on unique search queries sent to each provider.
+# Prevents runaway loop and keeps API costs predictable.
+_MAX_QUERIES = 3
+
+# Quality threshold: if we have at least this many unique papers from the
+# first provider, skip the remaining providers entirely.
+_QUALITY_THRESHOLD_PAPERS = 3
+
 _PROVIDERS: list[tuple[Callable, str, str]] = [
     (search_arxiv,    "arxiv_search",    "arXiv"),
     (search_openalex, "openalex_search", "OpenAlex"),
@@ -70,67 +80,76 @@ class SearchAgent(BaseAgent):
         bound_log = logger.bind(job_id=self.job_id, agent_name=self.agent_name)
 
         with agent_trace("search_agent", run_type="chain", job_id=self.job_id, topic=topic):
-            # Phase 1: query planning
+            # Phase 1: query planning — cap at _MAX_QUERIES total
             t0 = time.monotonic()
             llm_queries = self._plan_queries(topic)
 
-            queries: list[str] = [topic] + [
+            raw_queries: list[str] = [topic] + [
                 q for q in llm_queries if q.lower() != topic.lower()
             ]
+            # Hard cap: never send more than _MAX_QUERIES to any provider.
+            queries = raw_queries[:_MAX_QUERIES]
 
             self.trace.record_step(
                 job_id=self.job_id,
                 agent=self.agent_name,
                 tool="plan_queries",
                 input_data={"topic": topic},
-                output_data={"queries": queries},
+                output_data={"queries": queries, "capped_at": _MAX_QUERIES},
                 duration_ms=int((time.monotonic() - t0) * 1000),
                 success=True,
             )
-            bound_log.info("queries_planned", queries=queries, step="plan_queries")
+            bound_log.info("queries_planned", queries=queries, query_count=len(queries), step="plan_queries")
 
-            # Phase 2: parallel provider search
+            # Phase 2: sequential provider search with quality-based early exit.
+            # Providers are tried in order; if the first provider already yields
+            # enough unique papers we skip the rest entirely.
             all_candidates: list[dict] = []
             provider_counts: dict[str, int] = {}
 
-            def _run_provider(
-                provider_fn: Callable, tool_name: str, display_name: str
-            ) -> tuple[str, str, list[dict], dict[str, int], int]:
+            for provider_fn, tool_name, display_name in _PROVIDERS:
                 t = time.monotonic()
                 papers, per_query = self._search_provider_queries(
                     provider_fn, queries, _FETCH_PER_QUERY
                 )
-                return tool_name, display_name, papers, per_query, int((time.monotonic() - t) * 1000)
+                ms = int((time.monotonic() - t) * 1000)
+                all_candidates.extend(papers)
+                provider_counts[display_name] = len(papers)
 
-            with ThreadPoolExecutor(max_workers=len(_PROVIDERS)) as pool:
-                futures = {
-                    pool.submit(_run_provider, fn, tn, dn): tn
-                    for fn, tn, dn in _PROVIDERS
-                }
-                for future in as_completed(futures):
-                    tool_name, display_name, papers, per_query, ms = future.result()
-                    all_candidates.extend(papers)
-                    provider_counts[display_name] = len(papers)
-                    self.trace.record_step(
-                        job_id=self.job_id,
-                        agent=self.agent_name,
-                        tool=tool_name,
-                        input_data={"queries": queries, "n_per_query": _FETCH_PER_QUERY},
-                        output_data={
-                            "papers_found": len(papers),
-                            "per_query": per_query,
-                            "provider": display_name,
-                        },
-                        duration_ms=ms,
-                        success=True,
-                    )
+                self.trace.record_step(
+                    job_id=self.job_id,
+                    agent=self.agent_name,
+                    tool=tool_name,
+                    input_data={"queries": queries, "n_per_query": _FETCH_PER_QUERY},
+                    output_data={
+                        "papers_found": len(papers),
+                        "per_query": per_query,
+                        "provider": display_name,
+                    },
+                    duration_ms=ms,
+                    success=True,
+                )
+                bound_log.info(
+                    "provider_search_done",
+                    provider=display_name,
+                    papers_found=len(papers),
+                    duration_ms=ms,
+                    step=tool_name,
+                )
+
+                # Quality-based early exit: enough unique papers found → stop.
+                unique_so_far = len({
+                    re.sub(r'v\d+$', '', p.get("arxiv_id", ""))
+                    for p in all_candidates if p.get("arxiv_id")
+                })
+                if unique_so_far >= _QUALITY_THRESHOLD_PAPERS:
                     bound_log.info(
-                        "provider_search_done",
-                        provider=display_name,
-                        papers_found=len(papers),
-                        duration_ms=ms,
-                        step=tool_name,
+                        "early_exit_quality_met",
+                        unique_papers=unique_so_far,
+                        threshold=_QUALITY_THRESHOLD_PAPERS,
+                        providers_skipped=len(_PROVIDERS) - list(p[2] for p in _PROVIDERS).index(display_name) - 1,
                     )
+                    break
 
             # Phase 3: dedup + relevance ranking
             t2 = time.monotonic()
