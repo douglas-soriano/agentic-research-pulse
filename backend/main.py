@@ -3,6 +3,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import api_router
 from app.database import init_db
+from app.observability.logging import configure_logging
+
+configure_logging()
 
 app = FastAPI(title="ResearchPulse", version="0.1.0")
 

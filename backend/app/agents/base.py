@@ -2,13 +2,12 @@
 BaseAgent — shared agentic loop logic with retry, tracing, and tool dispatch.
 All specialized agents inherit from this.
 
-Uses the openai SDK pointed at Groq's OpenAI-compatible endpoint:
+Uses the openai SDK pointed at Gemini's OpenAI-compatible endpoint:
 - Messages are plain dicts: {role, content} / {role, tool_calls} / {role: tool, tool_call_id, content}
 - Tool declarations follow the OpenAI function-calling format.
 - "Done" = no tool_calls on the response message.
 """
 import json
-import logging
 import os
 import random
 import time
@@ -16,16 +15,27 @@ from datetime import datetime, timezone
 from typing import Any, Type
 
 import instructor
+import structlog
 from openai import OpenAI, APIStatusError
 from pydantic import BaseModel
 
 from app.config import settings, ProviderConfig
+from app.observability.cost import estimate_cost_usd
 from app.services.trace_service import TraceService
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 LLM_LOG_DIR = "/data/llm_logs"
 LLM_LOG_FILE = os.path.join(LLM_LOG_DIR, "latest.log")
+
+
+def _wrap_openai_if_enabled(client: OpenAI) -> OpenAI:
+    """Wrap the OpenAI client with LangSmith tracing when enabled."""
+    try:
+        from langsmith.wrappers import wrap_openai
+        return wrap_openai(client)
+    except Exception:
+        return client
 
 
 def init_llm_log(topic: str, job_id: str) -> None:
@@ -76,21 +86,16 @@ class BaseAgent:
 
     def __init__(self, job_id: str, budget: LLMCallBudget | None = None):
         self.job_id = job_id
-        # Build one (raw_client, instructor_client) pair per provider in the chain.
         self._provider_clients: list[tuple[ProviderConfig, OpenAI, Any]] = []
         for p in settings.get_provider_chain():
-            raw = OpenAI(api_key=p.api_key, base_url=p.base_url)
+            raw = _wrap_openai_if_enabled(OpenAI(api_key=p.api_key, base_url=p.base_url))
             instr = instructor.from_openai(raw, mode=instructor.Mode.JSON)
             self._provider_clients.append((p, raw, instr))
 
-        # Primary provider clients exposed for _run_loop / legacy usage.
         self.client = self._provider_clients[0][1]
         self._structured_client = self._provider_clients[0][2]
         self.trace = TraceService()
         self.budget = budget or LLMCallBudget(settings.max_llm_calls_per_job)
-        # Each subclass sets these:
-        # self.tools = [{"type": "function", "function": {...}}]
-        # self.tool_map = {"fn_name": callable}
         self.tools: list[dict] = []
         self.tool_map: dict[str, Any] = {}
 
@@ -106,14 +111,10 @@ class BaseAgent:
         return (
             "429" in msg
             or "rate limit" in msg
-            # "resource exhausted" excluded — daily quota exhaustion is not transient
             or "503" in msg
         )
 
     def _is_provider_fatal_error(self, exc: BaseException) -> bool:
-        """True when the provider is permanently unavailable for this job — quota
-        exhausted or auth failure. Triggers a switch to the next provider in the chain.
-        Transient errors (rate limit, 5xx) are NOT fatal: they fail fast without switching."""
         if isinstance(exc, APIStatusError):
             if exc.status_code in (401, 403):
                 return True
@@ -151,8 +152,6 @@ class BaseAgent:
         messages: list[dict],
         tool_choice: str = "auto",
     ):
-        # Check budget before making the call (not inside the retry loop —
-        # retries on the *same* call don't count as additional calls).
         self.budget.consume(self.agent_name)
 
         create_kwargs: dict[str, Any] = {
@@ -173,8 +172,12 @@ class BaseAgent:
                     raise
                 delay = self._retry_delay(exc, attempt)
                 logger.warning(
-                    "Groq %s (attempt %d/%d) — retrying in %.0fs",
-                    str(exc)[:120], attempt + 1, max_attempts, delay,
+                    "llm_retry",
+                    error=str(exc)[:120],
+                    attempt=attempt + 1,
+                    max_attempts=max_attempts,
+                    delay_s=round(delay),
+                    agent=self.agent_name,
                 )
                 time.sleep(delay)
 
@@ -189,14 +192,13 @@ class BaseAgent:
         system: str | None = None,
         max_retries: int = 2,
         phase_tool: str | None = None,
-    ) -> BaseModel:
+    ) -> tuple[BaseModel, dict]:
         """
-        Single LLM call that returns a validated Pydantic object.
+        Single LLM call that returns (validated_pydantic_object, usage_info).
+        usage_info contains: prompt_tokens, completion_tokens, total_tokens, model, cost_usd.
 
         If the model's output fails Pydantic validation, instructor automatically
-        sends the validation error back to the LLM as a corrective prompt and retries
-        up to max_retries times before raising. Each initial call counts against the
-        budget; corrective retries do not (they are bounded and short).
+        sends the validation error back and retries up to max_retries times.
         """
         self.budget.consume(self.agent_name)
 
@@ -209,26 +211,40 @@ class BaseAgent:
         last_exc: Exception | None = None
         for idx, (p_cfg, _, instr_client) in enumerate(self._provider_clients):
             try:
-                result = instr_client.chat.completions.create(
+                result, completion = instr_client.chat.completions.create_with_completion(
                     model=p_cfg.model,
                     messages=msgs,
                     response_model=response_model,
                     max_retries=max_retries,
                 )
+                usage = getattr(completion, "usage", None)
+                prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
+                completion_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
+                cost = estimate_cost_usd(p_cfg.model, prompt_tokens, completion_tokens)
+                usage_info = {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": prompt_tokens + completion_tokens,
+                    "model": p_cfg.model,
+                    "cost_usd": cost,
+                }
                 self._log_structured(msgs, response_model.__name__, result=result)
-                return result
+                return result, usage_info
             except Exception as exc:
                 last_exc = exc
                 if not self._is_provider_fatal_error(exc):
-                    # Transient error — fail fast, no provider switch.
                     self._log_structured(msgs, response_model.__name__, error=str(exc))
                     raise
                 self._log_structured(msgs, response_model.__name__, error=f"[{p_cfg.name}] {exc}")
                 if idx < len(self._provider_clients) - 1:
                     next_name = self._provider_clients[idx + 1][0].name
                     logger.warning(
-                        "%s: %s fatal error — switching to %s: %s",
-                        self.agent_name, p_cfg.name, next_name, str(exc)[:120],
+                        "provider_switch",
+                        from_provider=p_cfg.name,
+                        to_provider=next_name,
+                        reason=str(exc)[:120],
+                        agent=self.agent_name,
+                        phase_tool=phase_tool or "",
                     )
                     self.trace.record_step(
                         job_id=self.job_id,
@@ -244,7 +260,7 @@ class BaseAgent:
                         success=False,
                         error=str(exc)[:200],
                     )
-        raise last_exc  # type: ignore[misc]  — loop always sets last_exc
+        raise last_exc  # type: ignore[misc]
 
     # ------------------------------------------------------------------
     # Agentic loop
@@ -261,13 +277,6 @@ class BaseAgent:
         """
         Core agentic loop. Runs until there are no tool_calls in the response
         or max_iterations is reached.
-
-        force_tool_first=True uses tool_choice="required" on the first iteration
-        so the model cannot respond with plain text before calling at least one tool.
-
-        force_json_on_completion=True: when the model exits naturally with no
-        tool calls, force one more "none"-mode call demanding JSON-only output.
-        Only fires when the response text doesn't already start with '{'.
         """
         msgs: list[dict] = []
         if system:
@@ -295,9 +304,6 @@ class BaseAgent:
                     and (iteration > 0 or not self.tools)
                     and not text.strip().startswith("{")
                 ):
-                    # Model returned prose instead of JSON — demand JSON-only.
-                    # Only fires when the response isn't already valid JSON, so
-                    # we avoid an unnecessary extra API call on clean responses.
                     msgs.append({"role": "assistant", "content": text})
                     msgs.append({
                         "role": "user",
@@ -311,7 +317,6 @@ class BaseAgent:
                     return final
                 return response
 
-            # Append assistant message with tool_calls
             msgs.append({
                 "role": "assistant",
                 "content": message.content,
@@ -328,7 +333,6 @@ class BaseAgent:
                 ],
             })
 
-            # Execute all tool calls and collect results
             result_msgs: list[dict] = []
             all_empty = True
             for tc in message.tool_calls:
@@ -390,6 +394,13 @@ class BaseAgent:
                     duration_ms=duration_ms,
                     success=True,
                 )
+                logger.info(
+                    "tool_call",
+                    tool=name,
+                    duration_ms=duration_ms,
+                    success=True,
+                    agent=self.agent_name,
+                )
                 return {
                     "role": "tool",
                     "tool_call_id": tool_call_id,
@@ -408,6 +419,13 @@ class BaseAgent:
                     duration_ms=duration_ms,
                     success=False,
                     error=str(exc),
+                )
+                logger.warning(
+                    "tool_call_failed",
+                    tool=name,
+                    attempt=attempt,
+                    error=str(exc)[:200],
+                    agent=self.agent_name,
                 )
                 if attempt < settings.max_tool_retries:
                     time.sleep(min(2 ** attempt + random.uniform(0, 1.0), 30))
@@ -461,7 +479,7 @@ class BaseAgent:
                     f.write(f"[ASSISTANT - text]\n{preview}\n")
                 f.write("\n")
         except Exception:
-            pass  # logging must never crash the agent
+            pass
 
     def _log_structured(
         self,

@@ -21,7 +21,7 @@ Both use Server-Sent Events (text/event-stream) format:
 """
 import asyncio
 import json
-import logging
+import structlog
 
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Request
@@ -30,7 +30,7 @@ from fastapi.responses import StreamingResponse
 from app.config import settings
 from app.services.stream_service import stream_service
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/stream", tags=["stream"])
 
 HEARTBEAT_INTERVAL = 15  # seconds

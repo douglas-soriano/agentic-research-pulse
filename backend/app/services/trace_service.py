@@ -6,10 +6,14 @@ import time
 from contextlib import contextmanager
 from datetime import datetime
 
+import structlog
+
 from app.database import get_session
 from app.models.trace import Trace, TraceCreate, TraceStep
 from app.repositories.trace_repository import TraceRepository
 from app.services.stream_service import stream_service
+
+logger = structlog.get_logger(__name__)
 
 
 class TraceService:
@@ -28,6 +32,8 @@ class TraceService:
         duration_ms: int,
         success: bool,
         error: str | None = None,
+        token_count: int | None = None,
+        cost_usd: float | None = None,
     ) -> None:
         step = TraceStep(
             agent=agent,
@@ -37,16 +43,17 @@ class TraceService:
             duration_ms=duration_ms,
             success=success,
             error=error,
+            token_count=token_count,
+            cost_usd=cost_usd,
         )
         with get_session() as session:
             repo = TraceRepository(session)
             repo.append_step(job_id, step)
 
-        # Publish to SSE stream in real time
         try:
             stream_service.trace_step(job_id, step.model_dump(mode="json"))
         except Exception:
-            pass  # Stream publish failure must never crash the agent
+            pass
 
     def complete(self, job_id: str, stats: dict) -> None:
         with get_session() as session:
@@ -69,7 +76,15 @@ class TraceService:
             return repo.list_recent(limit)
 
     @contextmanager
-    def timed_tool(self, job_id: str, agent: str, tool: str, input_data: dict):
+    def timed_tool(
+        self,
+        job_id: str,
+        agent: str,
+        tool: str,
+        input_data: dict,
+        token_count: int | None = None,
+        cost_usd: float | None = None,
+    ):
         start = time.monotonic()
         output: dict = {}
         success = True
@@ -92,4 +107,6 @@ class TraceService:
                 duration_ms=duration_ms,
                 success=success,
                 error=error,
+                token_count=token_count,
+                cost_usd=cost_usd,
             )

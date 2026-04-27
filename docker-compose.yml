@@ -38,6 +38,9 @@ services:
       CHROMA_HOST: chroma
       CHROMA_PORT: "8000"
       DATABASE_URL: sqlite:////data/researchpulse.db
+      LANGCHAIN_TRACING_V2: ${LANGCHAIN_TRACING_V2:-false}
+      LANGCHAIN_API_KEY: ${LANGCHAIN_API_KEY:-}
+      LANGCHAIN_PROJECT: ${LANGCHAIN_PROJECT:-researchpulse}
     volumes:
       - backend_data:/data
       - ./logs:/data/llm_logs
@@ -64,6 +67,9 @@ services:
       CHROMA_HOST: chroma
       CHROMA_PORT: "8000"
       DATABASE_URL: sqlite:////data/researchpulse.db
+      LANGCHAIN_TRACING_V2: ${LANGCHAIN_TRACING_V2:-false}
+      LANGCHAIN_API_KEY: ${LANGCHAIN_API_KEY:-}
+      LANGCHAIN_PROJECT: ${LANGCHAIN_PROJECT:-researchpulse}
     volumes:
       - backend_data:/data
       - ./logs:/data/llm_logs

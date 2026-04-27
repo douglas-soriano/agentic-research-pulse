@@ -8,6 +8,9 @@ from celery.schedules import crontab
 
 from app.config import settings
 from app.database import init_db
+from app.observability.logging import configure_logging
+
+configure_logging()
 
 celery_app = Celery(
     "researchpulse",
@@ -32,7 +35,7 @@ celery_app.conf.update(
     beat_schedule={
         "refresh-reviews-hourly": {
             "task": "jobs.refresh_reviews",
-            "schedule": crontab(minute=0),  # Every hour at :00
+            "schedule": crontab(minute=0),
         },
     },
 )

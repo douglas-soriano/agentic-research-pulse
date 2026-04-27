@@ -11,6 +11,8 @@ class TraceStep(BaseModel):
     duration_ms: int
     success: bool
     error: str | None = None
+    token_count: int | None = None
+    cost_usd: float | None = None
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 
