@@ -1,18 +1,18 @@
 """
 OpenAlex search tool.
 Fully open, no API key. Polite pool: include email in User-Agent.
+All HTTP calls use tenacity retry (1s→2s→4s, up to 3 retries).
 
 ID strategy:
-  - Papers with an arXiv preprint  → arxiv_id = arXiv ID, source_url = arxiv.org URL
-  - Papers without arXiv (journals, etc.) → arxiv_id = DOI, source_url = doi.org URL
-  PaperService detects DOI-based IDs (start with "10.") and skips the arXiv
-  full-text fetch, falling back to the abstract for embedding.
-
-Abstract note: OpenAlex stores abstracts as an inverted index
-  {"word": [pos1, pos2, ...], ...}
-which is reconstructed to plain text before returning.
+  - Papers with an arXiv preprint  → arxiv_id = arXiv ID
+  - Papers without arXiv (journals) → arxiv_id = DOI
 """
 import httpx
+import structlog
+
+from app.resilience.retry import http_retry
+
+logger = structlog.get_logger(__name__)
 
 OA_SEARCH_URL = "https://api.openalex.org/works"
 _SELECT = "id,title,abstract_inverted_index,authorships,publication_year,ids,cited_by_count,doi"
@@ -38,30 +38,32 @@ def search_openalex(query: str, max_results: int = 8) -> dict:
         "select": _SELECT,
     }
     try:
-        response = httpx.get(OA_SEARCH_URL, params=params, headers=_HEADERS, timeout=20)
+        response = _openalex_request(params)
         response.raise_for_status()
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code == 429:
+            logger.warning("openalex_rate_limited", query=query)
             return {"papers": [], "total_found": 0, "error": "rate_limited"}
         raise
+    except Exception as exc:
+        logger.warning("openalex_request_failed", query=query, error=str(exc))
+        return {"papers": [], "total_found": 0, "error": str(exc)}
 
     data = response.json()
     papers = []
     for item in data.get("results", []):
         ids = item.get("ids") or {}
 
-        # Prefer arXiv ID — enables full-text fetch later.
         raw_arxiv = ids.get("arxiv", "")
         arxiv_id = raw_arxiv.replace("https://arxiv.org/abs/", "").strip("/")
 
         if arxiv_id:
             source_url = f"https://arxiv.org/abs/{arxiv_id}"
         else:
-            # Fall back to DOI — PaperService will use abstract as full text.
             doi = (item.get("doi") or ids.get("doi", "")).lstrip("https://doi.org/")
             if not doi:
                 continue
-            arxiv_id = doi   # DOI used as the unique paper identifier
+            arxiv_id = doi
             source_url = f"https://doi.org/{doi}"
 
         abstract = _reconstruct_abstract(item.get("abstract_inverted_index") or {})
@@ -85,3 +87,8 @@ def search_openalex(query: str, max_results: int = 8) -> dict:
             break
 
     return {"papers": papers, "total_found": len(papers)}
+
+
+@http_retry
+def _openalex_request(params: dict) -> httpx.Response:
+    return httpx.get(OA_SEARCH_URL, params=params, headers=_HEADERS, timeout=20)

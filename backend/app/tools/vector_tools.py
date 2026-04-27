@@ -91,6 +91,23 @@ def semantic_search(query: str = "", paper_ids: list[str] | None = None, n_resul
     return {"chunks": chunks, "total": len(chunks)}
 
 
+def paper_has_chunks(arxiv_id: str) -> bool:
+    """
+    Return True if ChromaDB already contains at least one chunk for this arxiv_id.
+    Used as an idempotency check before embedding to avoid duplicating work.
+    """
+    try:
+        collection = _get_collection()
+        result = collection.get(
+            where={"arxiv_id": arxiv_id},
+            limit=1,
+            include=[],
+        )
+        return bool(result["ids"])
+    except Exception:
+        return False
+
+
 def verify_chunk_exists(chunk_id: str) -> dict:
     """Check whether a chunk_id exists in the vector DB (for citation grounding)."""
     collection = _get_collection()

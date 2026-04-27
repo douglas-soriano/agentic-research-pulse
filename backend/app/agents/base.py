@@ -21,6 +21,7 @@ from pydantic import BaseModel
 
 from app.config import settings, ProviderConfig
 from app.observability.cost import estimate_cost_usd
+from app.resilience.circuit_breaker import get_circuit_breaker, CircuitOpenError
 from app.services.trace_service import TraceService
 
 logger = structlog.get_logger(__name__)
@@ -104,6 +105,7 @@ class BaseAgent:
     # ------------------------------------------------------------------
 
     def _is_transient_llm_error(self, exc: BaseException) -> bool:
+        """Transient infrastructure errors — worth retrying on the same provider."""
         if isinstance(exc, APIStatusError):
             if exc.status_code in (429, 500, 503):
                 return True
@@ -115,20 +117,46 @@ class BaseAgent:
         )
 
     def _is_provider_fatal_error(self, exc: BaseException) -> bool:
+        """
+        Permanent provider-level failures that should trigger a provider switch.
+
+        IMPORTANT: instructor wraps API errors in InstructorRetryException, so
+        isinstance(exc, APIStatusError) is often False here. All detection must
+        also work via text patterns on str(exc), which includes the original error.
+
+        Auth failures (401, 403, 400 API_KEY_INVALID) and quota exhaustion belong
+        here — they will never recover on this provider for this job.
+        """
         if isinstance(exc, APIStatusError):
             if exc.status_code in (401, 403):
                 return True
+            if exc.status_code == 400:
+                # Gemini returns 400 for invalid API keys
+                msg = str(exc).lower()
+                return (
+                    "api_key_invalid" in msg
+                    or "api key not valid" in msg
+                    or "invalid api key" in msg
+                )
             if exc.status_code == 429:
                 msg = str(exc).lower()
                 return "resource exhausted" in msg or "quota" in msg
+
+        # Text-based fallback — catches instructor-wrapped exceptions where
+        # isinstance(exc, APIStatusError) is False but the original error text
+        # is embedded in str(exc).
         msg = str(exc).lower()
         return (
             "resource exhausted" in msg
             or "quota" in msg
-            or "invalid api key" in msg
-            or "invalid_api_key" in msg
-            or "incorrect api key" in msg
-            or "insufficient_quota" in msg
+            # Auth errors (provider-specific phrasing)
+            or "api_key_invalid" in msg          # Gemini: reason=API_KEY_INVALID
+            or "api key not valid" in msg        # Gemini: 'API key not valid'
+            or "invalid api key" in msg          # generic
+            or "invalid_api_key" in msg          # generic snake_case
+            or "incorrect api key" in msg        # OpenAI phrasing
+            or "insufficient_quota" in msg       # OpenAI quota
+            or "permission denied" in msg        # GCP 403-style in 400 body
         )
 
     def _retry_delay(self, exc: BaseException, attempt: int) -> float:
@@ -147,12 +175,29 @@ class BaseAgent:
         delay = min(base * (2 ** attempt), settings.llm_api_retry_max_seconds)
         return delay + random.uniform(0, 5.0)
 
+    def _is_cb_countable_failure(self, exc: BaseException) -> bool:
+        """
+        Only transient infrastructure failures count toward the circuit breaker.
+        Auth errors (wrong API key, quota exhausted) are permanent config failures
+        and must NOT open the circuit — they should just trigger a provider switch.
+        """
+        return self._is_transient_llm_error(exc)
+
     def _generate_content_with_retry(
         self,
         messages: list[dict],
         tool_choice: str = "auto",
     ):
         self.budget.consume(self.agent_name)
+
+        # Check primary provider circuit breaker
+        primary_cfg = self._provider_clients[0][0]
+        cb = get_circuit_breaker(primary_cfg.name)
+        if not cb.allow_request():
+            raise CircuitOpenError(
+                f"LLM provider '{primary_cfg.name}' circuit is open — "
+                "too many recent failures. Retry in 60 seconds."
+            )
 
         create_kwargs: dict[str, Any] = {
             "model": settings.llm_model,
@@ -166,8 +211,12 @@ class BaseAgent:
         max_attempts = max(1, settings.llm_api_max_retries)
         for attempt in range(max_attempts):
             try:
-                return self.client.chat.completions.create(**create_kwargs)
+                response = self.client.chat.completions.create(**create_kwargs)
+                cb.record_success()
+                return response
             except Exception as exc:
+                if self._is_cb_countable_failure(exc):
+                    cb.record_failure()
                 if not self._is_transient_llm_error(exc) or attempt >= max_attempts - 1:
                     raise
                 delay = self._retry_delay(exc, attempt)
@@ -210,6 +259,16 @@ class BaseAgent:
 
         last_exc: Exception | None = None
         for idx, (p_cfg, _, instr_client) in enumerate(self._provider_clients):
+            cb = get_circuit_breaker(p_cfg.name)
+            if not cb.allow_request():
+                logger.warning(
+                    "circuit_skip_provider",
+                    provider=p_cfg.name,
+                    agent=self.agent_name,
+                )
+                last_exc = CircuitOpenError(f"Provider '{p_cfg.name}' circuit is open")
+                continue
+
             try:
                 result, completion = instr_client.chat.completions.create_with_completion(
                     model=p_cfg.model,
@@ -217,6 +276,7 @@ class BaseAgent:
                     response_model=response_model,
                     max_retries=max_retries,
                 )
+                cb.record_success()
                 usage = getattr(completion, "usage", None)
                 prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
                 completion_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
@@ -232,19 +292,33 @@ class BaseAgent:
                 return result, usage_info
             except Exception as exc:
                 last_exc = exc
-                if not self._is_provider_fatal_error(exc):
-                    self._log_structured(msgs, response_model.__name__, error=str(exc))
+                if self._is_cb_countable_failure(exc):
+                    cb.record_failure()
+
+                is_fatal = self._is_provider_fatal_error(exc)
+                error_snippet = str(exc)[:200]
+
+                if not is_fatal:
+                    # Non-fatal, non-transient (e.g. Pydantic validation failure from
+                    # instructor): no provider switch, just raise immediately.
+                    self._log_structured(msgs, response_model.__name__, error=error_snippet)
                     raise
-                self._log_structured(msgs, response_model.__name__, error=f"[{p_cfg.name}] {exc}")
-                if idx < len(self._provider_clients) - 1:
-                    next_name = self._provider_clients[idx + 1][0].name
+
+                # Fatal provider error (auth, quota, circuit open) → log and try next.
+                self._log_structured(msgs, response_model.__name__, error=f"[{p_cfg.name}] {error_snippet}")
+
+                remaining = self._provider_clients[idx + 1:]
+                if remaining:
+                    next_name = remaining[0][0].name
                     logger.warning(
                         "provider_switch",
                         from_provider=p_cfg.name,
+                        from_model=p_cfg.model,
                         to_provider=next_name,
-                        reason=str(exc)[:120],
+                        reason=error_snippet,
                         agent=self.agent_name,
                         phase_tool=phase_tool or "",
+                        job_id=self.job_id,
                     )
                     self.trace.record_step(
                         job_id=self.job_id,
@@ -255,11 +329,33 @@ class BaseAgent:
                             "model": p_cfg.model,
                             "phase_tool": phase_tool or "",
                         },
-                        output_data={"to": next_name, "reason": str(exc)[:200]},
+                        output_data={"to": next_name, "reason": error_snippet},
                         duration_ms=0,
                         success=False,
-                        error=str(exc)[:200],
+                        error=error_snippet,
                     )
+                    # Emit a LangSmith event for the switch if tracing is active.
+                    try:
+                        from langsmith import get_current_run_tree
+                        run = get_current_run_tree()
+                        if run:
+                            run.add_event({
+                                "name": "provider_switch",
+                                "message": f"Switched from {p_cfg.name} to {next_name}: {error_snippet[:120]}",
+                            })
+                    except Exception:
+                        pass
+                else:
+                    logger.error(
+                        "all_providers_exhausted",
+                        last_provider=p_cfg.name,
+                        reason=error_snippet,
+                        agent=self.agent_name,
+                        job_id=self.job_id,
+                    )
+
+        if last_exc is None:
+            last_exc = CircuitOpenError("All LLM providers unavailable (circuits open)")
         raise last_exc  # type: ignore[misc]
 
     # ------------------------------------------------------------------
