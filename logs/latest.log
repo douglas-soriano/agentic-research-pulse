@@ -1,11 +1,11 @@
 ========================================================================
-PIPELINE START: Economic Analysis of Social Interactions
-Job ID:         a8f87ec1-49c8-48ed-8648-7c050b457f74
-Started at:     2026-04-24 22:22:41 UTC
+PIPELINE START: Mixture of experts language models
+Job ID:         0c19f225-d21f-4620-b46f-80e13070520f
+Started at:     2026-04-27 04:23:01 UTC
 ========================================================================
 
 ========================================================================
-[22:22:43] search_agent  structured=QueryPlan  budget=1/60
+[04:23:03] search_agent  structured=QueryPlan  budget=1/60
 ========================================================================
 --- MESSAGES SENT ---
 [SYSTEM]
@@ -25,17 +25,17 @@ CRITICAL RULES — violating any of these will cause the search to fail:
 - Use ONLY descriptive keywords (e.…
 
 [USER]
-Topic: Economic Analysis of Social Interactions
+Topic: Mixture of experts language models
 
 Generate 3 diverse arXiv search queries. Return JSON only.
 
 --- RESPONSE ---
 [QueryPlan]
-{"queries":["game theory mechanism design economics","social networks behavioral economics applications","economic models estimation causal inference surveys"]}
+{"queries":["mixture of experts routing algorithm sparse activation","mixture of experts language model applications natural language processing","mixture of experts benchmark evaluation survey performance limitations"]}
 
 
 ========================================================================
-[22:22:59] extract_agent  structured=ClaimsOutput  budget=2/60
+[04:23:25] extract_agent  structured=ClaimsOutput  budget=2/60
 ========================================================================
 --- MESSAGES SENT ---
 [SYSTEM]
@@ -55,15 +55,159 @@ Return ONLY this JSON — no prose, no markdown:
 {"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
 
 [USER]
-Paper: The Nucleolus of a Characteristic Function Game
-Authors: David Schmeidler
-Abstract: Previous article Next article The Nucleolus of a Characteristic Function GameDavid SchmeidlerDavid Schmeidlerhttps://doi.org/10.1137/0117107PDFBibTexSections ToolsAdd to favoritesExport CitationTrack CitationsEmail SectionsAbout[1] Robert J. Aumann and , Michael Maschler, L. S. Shapley and , A. W. T
+Paper: Not All Experts are Equal: Efficient Expert Pruning and Skipping for Mixture-of-Experts Large Language Models
+Authors: Xudong Lu, Qi Liu, Yuhui Xu
+Abstract: A pivotal advancement in the progress of large language models (LLMs) is the emergence of the Mixture-of-Experts (MoE) LLMs. Compared to traditional LLMs, MoE LLMs can achieve higher performance with fewer parameters, but it is still hard to deploy them due to their immense parameter sizes. Differen
+
+Chunks (6 total):
+[
+  {
+    "index": 0,
+    "text": "[2402.14800] Not All Experts are Equal: Efficient Expert Pruning and Skipping for…
+
+--- RESPONSE ---
+[ClaimsOutput]
+{"claims":[{"index":1,"text":"The proposed method reduces memory usage and improves inference speed for more efficient deployment of MoE LLMs.","category":"contribution","confidence":0.9},{"index":1,"text":"The expert pruning method is based on enumeration of expert combinations, which becomes cumbersome with an increasing number of experts per MoE layer.","category":"limitation","confidence":0.8},{"index":4,"text":"The method investigates how to prune less important experts while maintaining satisfactory performance, utilizing an efficient post-training approach to minimize token reconstruction loss in a layer-by-layer manner.","category":"method","confidence":0.9},{"index":4,"text":"The approach enumerates and chooses combinations of experts that yield the lowest token reconstruction los…
+
+
+========================================================================
+[04:23:28] extract_agent  structured=ClaimsOutput  budget=3/60
+========================================================================
+--- MESSAGES SENT ---
+[SYSTEM]
+You are a scientific claim extraction assistant.
+
+You will receive a list of text chunks from a research paper, each labeled with an index number.
+
+For each chunk that contains meaningful scientific content (findings, methods, contributions, or limitations),
+write a concise 1–2 sentence claim summarising the key point.
+
+Skip chunks that are:
+- Navigation text, headers, or HTML boilerplate
+- Reference lists or citations only
+- Very short or uninformative
+
+Return ONLY this JSON — no prose, no markdown:
+{"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
+
+[USER]
+Paper: Generalizing GNNs with Tokenized Mixture of Experts
+Authors: Xiaoguang Guo, Zehong Wang, Jiazheng Li
+Abstract: Deployed graph neural networks (GNNs) are frozen at deployment yet must fit clean data, generalize under distribution shifts, and remain stable to perturbations. We show that static inference induces a fundamental tradeoff: improving stability requires reducing reliance on shift-sensitive features, 
+
+Chunks (5 total):
+[
+  {
+    "index": 0,
+    "text": "[2602.09258] Generalizing GNNs with Tokenized Mixture of Experts Generalizing GNNs with Tokenized Mixture of Experts Xiaoguang …
+
+--- RESPONSE ---
+[ClaimsOutput]
+{"claims":[{"index":1,"text":"The paper proposes STEM-GNN, a pretrain-then-finetune GNN framework for robust instance-conditional inference under frozen deployment, which uses an MoE encoder, VQ token interface, and Lipschitz-regularized prediction head.","category":"contribution","confidence":0.9},{"index":2,"text":"The paper decomposes OOD risk into mechanism coverage and selection quality, and decomposes stability risk into routing-fixed sensitivity and drift amplification, revealing precise levers absent in the static case.","category":"finding","confidence":0.8},{"index":2,"text":"STEM-GNN instantiates robust ICC for graph learning through three tightly coupled designs: (1) MoE Encoder for Coverage Expansion.","category":"method","confidence":0.8},{"index":3,"text":"GNNs learn functio…
+
+
+========================================================================
+[04:23:31] extract_agent  structured=ClaimsOutput  budget=4/60
+========================================================================
+--- MESSAGES SENT ---
+[SYSTEM]
+You are a scientific claim extraction assistant.
+
+You will receive a list of text chunks from a research paper, each labeled with an index number.
+
+For each chunk that contains meaningful scientific content (findings, methods, contributions, or limitations),
+write a concise 1–2 sentence claim summarising the key point.
+
+Skip chunks that are:
+- Navigation text, headers, or HTML boilerplate
+- Reference lists or citations only
+- Very short or uninformative
+
+Return ONLY this JSON — no prose, no markdown:
+{"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
+
+[USER]
+Paper: ExpertFlow: Efficient Mixture-of-Experts Inference via Predictive Expert Caching and Token Scheduling
+Authors: Xin He, Shunkang Zhang, Kaijie Tang
+Abstract: Sparse Mixture-of-Experts (MoE) models can outperform dense large language models at similar computation by activating only a small set of experts per token. However, stacking many expert modules introduces substantial parameter memory, which makes MoE models difficult to deploy in memory-constraine
+
+Chunks (5 total):
+[
+  {
+    "index": 0,
+    "text": "[2410.17954] ExpertFlow: Optimized Expert Activation and Token Allocation for Eff…
+
+--- RESPONSE ---
+[ClaimsOutput]
+{"claims":[{"index":1,"text":"The proposed Token Scheduler reduces I/O overhead by decreasing expert loads and enhances computational efficiency by optimizing token assignments.","category":"contribution","confidence":0.9},{"index":2,"text":"ExpertFlow incorporates predictive routing and strategic caching to optimize memory usage and accelerate inference in Mixture-of-Experts (MoE) models.","category":"contribution","confidence":0.9},{"index":2,"text":"ExpertFlow consists of a Routing Path Predictor, an Expert Cache Engine, and a Token Scheduler to improve cache efficiency and enhance expert scheduling.","category":"method","confidence":0.9},{"index":3,"text":"The system integrates a MoE Routing Path Predictor, Expert Cache Engine, and Token Scheduler to address challenges associated with …
+
+
+========================================================================
+[04:23:32] extract_agent  structured=ClaimsOutput  budget=5/60
+========================================================================
+--- MESSAGES SENT ---
+[SYSTEM]
+You are a scientific claim extraction assistant.
+
+You will receive a list of text chunks from a research paper, each labeled with an index number.
+
+For each chunk that contains meaningful scientific content (findings, methods, contributions, or limitations),
+write a concise 1–2 sentence claim summarising the key point.
+
+Skip chunks that are:
+- Navigation text, headers, or HTML boilerplate
+- Reference lists or citations only
+- Very short or uninformative
+
+Return ONLY this JSON — no prose, no markdown:
+{"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
+
+[USER]
+Paper: Gradient-based learning applied to document recognition
+Authors: Yann LeCun, Léon Bottou, Yoshua Bengio
+Abstract: Multilayer neural networks trained with the back-propagation algorithm constitute the best example of a successful gradient based learning technique. Given an appropriate network architecture, gradient-based learning algorithms can be used to synthesize a complex decision surface that can classify h
 
 Chunks (1 total):
 [
   {
     "index": 0,
-    "text": "Previous article Next article The Nucleolus of a Characteristic Function GameDavid SchmeidlerDavid Schmeidlerhttps://doi.org/10.1137/0117107PDFBibTexSecti…
+    "text": "Multilayer neural networks trained with the back-propagation algorithm constitute the best example of a successful gradient …
+
+--- RESPONSE ---
+[ClaimsOutput]
+{"claims":[{"index":0,"text":"Multilayer neural networks with back-propagation are a successful gradient-based learning technique for classifying high-dimensional patterns.","category":"finding","confidence":0.9}]}
+
+
+========================================================================
+[04:23:33] extract_agent  structured=ClaimsOutput  budget=6/60
+========================================================================
+--- MESSAGES SENT ---
+[SYSTEM]
+You are a scientific claim extraction assistant.
+
+You will receive a list of text chunks from a research paper, each labeled with an index number.
+
+For each chunk that contains meaningful scientific content (findings, methods, contributions, or limitations),
+write a concise 1–2 sentence claim summarising the key point.
+
+Skip chunks that are:
+- Navigation text, headers, or HTML boilerplate
+- Reference lists or citations only
+- Very short or uninformative
+
+Return ONLY this JSON — no prose, no markdown:
+{"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
+
+[USER]
+Paper: DeepSeekMoE: Towards Ultimate Expert Specialization in Mixture-of-Experts Language Models
+Authors: Damai Dai, Chengqi Deng, Chenggang Zhao
+Abstract: Damai Dai, Chengqi Deng, Chenggang Zhao, R.x. Xu, Huazuo Gao, Deli Chen, Jiashi Li, Wangding Zeng, Xingkai Yu, Y. Wu, Zhenda Xie, Y.k. Li, Panpan Huang, Fuli Luo, Chong Ruan, Zhifang Sui, Wenfeng Liang. Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (Volume 1
+
+Chunks (1 total):
+[
+  {
+    "index": 0,
+    "text": "Damai Dai, Chengqi Deng, Chenggang Zhao, R.x. Xu, Huazuo Gao, Deli Chen, Jiashi Li, Wangd…
 
 --- RESPONSE ---
 [ClaimsOutput]
@@ -71,339 +215,7 @@ Chunks (1 total):
 
 
 ========================================================================
-[22:23:00] extract_agent  structured=ClaimsOutput  budget=3/60
-========================================================================
---- MESSAGES SENT ---
-[SYSTEM]
-You are a scientific claim extraction assistant.
-
-You will receive a list of text chunks from a research paper, each labeled with an index number.
-
-For each chunk that contains meaningful scientific content (findings, methods, contributions, or limitations),
-write a concise 1–2 sentence claim summarising the key point.
-
-Skip chunks that are:
-- Navigation text, headers, or HTML boilerplate
-- Reference lists or citations only
-- Very short or uninformative
-
-Return ONLY this JSON — no prose, no markdown:
-{"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
-
-[USER]
-Paper: Political Game Theory: An Introduction
-Authors: Nolan McCarty, Adam Meirowitz
-Abstract: Political Game Theory is a self-contained introduction to game theory and its applications to political science. The book presents choice theory, social choice theory, static and dynamic games of complete information, static and dynamic games of incomplete information, repeated games, bargaining the
-
-Chunks (1 total):
-[
-  {
-    "index": 0,
-    "text": "Political Game Theory is a self-contained introduction to game theory and its applications to political science. The book presents choice theory, soci…
-
---- RESPONSE ---
-[ClaimsOutput]
-{"claims":[{"index":0,"text":"Political Game Theory introduces game theory and its applications to political science, covering topics like choice theory, social choice theory, static and dynamic games, repeated games, bargaining theory, and mechanism design.","category":"contribution","confidence":0.9}]}
-
-
-========================================================================
-[22:23:08] extract_agent  structured=ClaimsOutput  budget=4/60
-========================================================================
---- MESSAGES SENT ---
-[SYSTEM]
-You are a scientific claim extraction assistant.
-
-You will receive a list of text chunks from a research paper, each labeled with an index number.
-
-For each chunk that contains meaningful scientific content (findings, methods, contributions, or limitations),
-write a concise 1–2 sentence claim summarising the key point.
-
-Skip chunks that are:
-- Navigation text, headers, or HTML boilerplate
-- Reference lists or citations only
-- Very short or uninformative
-
-Return ONLY this JSON — no prose, no markdown:
-{"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
-
-[USER]
-Paper: Economic Analysis of Social Interactions
-Authors: Charles F. Manski
-Abstract: Economics is broadening its scope from analysis of markets to study of general social interactions. Developments in game theory, the economics of the family, and endogenous growth theory have led the way. Economists have also performed new empirical research using observational data on social intera
-
-Chunks (1 total):
-[
-  {
-    "index": 0,
-    "text": "Economics is broadening its scope from analysis of markets to study of general social interactions. Developments in game theory, the economics of the family, an…
-
---- RESPONSE ---
-[ERROR] [gemini] <failed_attempts>
-
-<generation number="1">
-<exception>
-    Error code: 429 - [{'error': {'code': 429, 'message': 'Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details.', 'status': 'RESOURCE_EXHAUSTED'}}]
-</exception>
-<completion>
-    None
-</completion>
-</generation>
-
-<generation number="2">
-<excep
-
-
-========================================================================
-[22:23:12] extract_agent  structured=ClaimsOutput  budget=4/60
-========================================================================
---- MESSAGES SENT ---
-[SYSTEM]
-You are a scientific claim extraction assistant.
-
-You will receive a list of text chunks from a research paper, each labeled with an index number.
-
-For each chunk that contains meaningful scientific content (findings, methods, contributions, or limitations),
-write a concise 1–2 sentence claim summarising the key point.
-
-Skip chunks that are:
-- Navigation text, headers, or HTML boilerplate
-- Reference lists or citations only
-- Very short or uninformative
-
-Return ONLY this JSON — no prose, no markdown:
-{"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
-
-[USER]
-Paper: Economic Analysis of Social Interactions
-Authors: Charles F. Manski
-Abstract: Economics is broadening its scope from analysis of markets to study of general social interactions. Developments in game theory, the economics of the family, and endogenous growth theory have led the way. Economists have also performed new empirical research using observational data on social intera
-
-Chunks (1 total):
-[
-  {
-    "index": 0,
-    "text": "Economics is broadening its scope from analysis of markets to study of general social interactions. Developments in game theory, the economics of the family, an…
-
---- RESPONSE ---
-[ERROR] [chatgpt] <failed_attempts>
-
-<generation number="1">
-<exception>
-    Error code: 429 - {'error': {'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.', 'type': 'insufficient_quota', 'param': None, 'code': 'insufficient_quota'}}
-</exception>
-<comple
-
-
-========================================================================
-[22:23:21] extract_agent  structured=ClaimsOutput  budget=4/60
-========================================================================
---- MESSAGES SENT ---
-[SYSTEM]
-You are a scientific claim extraction assistant.
-
-You will receive a list of text chunks from a research paper, each labeled with an index number.
-
-For each chunk that contains meaningful scientific content (findings, methods, contributions, or limitations),
-write a concise 1–2 sentence claim summarising the key point.
-
-Skip chunks that are:
-- Navigation text, headers, or HTML boilerplate
-- Reference lists or citations only
-- Very short or uninformative
-
-Return ONLY this JSON — no prose, no markdown:
-{"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
-
-[USER]
-Paper: Economic Analysis of Social Interactions
-Authors: Charles F. Manski
-Abstract: Economics is broadening its scope from analysis of markets to study of general social interactions. Developments in game theory, the economics of the family, and endogenous growth theory have led the way. Economists have also performed new empirical research using observational data on social intera
-
-Chunks (1 total):
-[
-  {
-    "index": 0,
-    "text": "Economics is broadening its scope from analysis of markets to study of general social interactions. Developments in game theory, the economics of the family, an…
-
---- RESPONSE ---
-[ClaimsOutput]
-{"claims":[{"index":0,"text":"Economics is broadening its scope to analyze general social interactions beyond market studies.","category":"finding","confidence":0.9},{"index":0,"text":"Developments in game theory, the economics of the family, and endogenous growth theory have contributed to the study of social interactions.","category":"contribution","confidence":0.85}]}
-
-
-========================================================================
-[22:23:27] extract_agent  structured=ClaimsOutput  budget=5/60
-========================================================================
---- MESSAGES SENT ---
-[SYSTEM]
-You are a scientific claim extraction assistant.
-
-You will receive a list of text chunks from a research paper, each labeled with an index number.
-
-For each chunk that contains meaningful scientific content (findings, methods, contributions, or limitations),
-write a concise 1–2 sentence claim summarising the key point.
-
-Skip chunks that are:
-- Navigation text, headers, or HTML boilerplate
-- Reference lists or citations only
-- Very short or uninformative
-
-Return ONLY this JSON — no prose, no markdown:
-{"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
-
-[USER]
-Paper: Multiagent Systems
-Authors: Yoav Shoham, Kevin Leyton‐Brown
-Abstract: Multiagent systems combine multiple autonomous entities, each having diverging interests or different information. This overview of the field offers a computer science perspective, but also draws on ideas from game theory, economics, operations research, logic, philosophy and linguistics. It will se
-
-Chunks (1 total):
-[
-  {
-    "index": 0,
-    "text": "Multiagent systems combine multiple autonomous entities, each having diverging interests or different information. This overview of the field offers a computer science …
-
---- RESPONSE ---
-[ClaimsOutput]
-{"claims":[{"index":0,"text":"Multiagent systems integrate autonomous entities with differing interests or information.","category":"contribution","confidence":0.9}]}
-
-
-========================================================================
-[22:23:32] extract_agent  structured=ClaimsOutput  budget=6/60
-========================================================================
---- MESSAGES SENT ---
-[SYSTEM]
-You are a scientific claim extraction assistant.
-
-You will receive a list of text chunks from a research paper, each labeled with an index number.
-
-For each chunk that contains meaningful scientific content (findings, methods, contributions, or limitations),
-write a concise 1–2 sentence claim summarising the key point.
-
-Skip chunks that are:
-- Navigation text, headers, or HTML boilerplate
-- Reference lists or citations only
-- Very short or uninformative
-
-Return ONLY this JSON — no prose, no markdown:
-{"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
-
-[USER]
-Paper: 
-Authors: Jörg Henseler, Christian M. Ringle, Rudolf R. Sinkovics
-Abstract: \n Contains fulltext :\n 82505.pdf (Publisher’s version ) (Closed access)\n
-
-Chunks (1 total):
-[
-  {
-    "index": 0,
-    "text": "\\n Contains fulltext :\\n 82505.pdf (Publisher\u2019s version ) (Closed access)\\n"
-  }
-]
-
-Extract claims from the chunks above. Return JSON only.
-
---- RESPONSE ---
-[ERROR] [gemini] <failed_attempts>
-
-<generation number="1">
-<exception>
-    Error code: 429 - [{'error': {'code': 429, 'message': 'Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details.', 'status': 'RESOURCE_EXHAUSTED'}}]
-</exception>
-<completion>
-    None
-</completion>
-</generation>
-
-<generation number="2">
-<excep
-
-
-========================================================================
-[22:23:38] extract_agent  structured=ClaimsOutput  budget=6/60
-========================================================================
---- MESSAGES SENT ---
-[SYSTEM]
-You are a scientific claim extraction assistant.
-
-You will receive a list of text chunks from a research paper, each labeled with an index number.
-
-For each chunk that contains meaningful scientific content (findings, methods, contributions, or limitations),
-write a concise 1–2 sentence claim summarising the key point.
-
-Skip chunks that are:
-- Navigation text, headers, or HTML boilerplate
-- Reference lists or citations only
-- Very short or uninformative
-
-Return ONLY this JSON — no prose, no markdown:
-{"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
-
-[USER]
-Paper: 
-Authors: Jörg Henseler, Christian M. Ringle, Rudolf R. Sinkovics
-Abstract: \n Contains fulltext :\n 82505.pdf (Publisher’s version ) (Closed access)\n
-
-Chunks (1 total):
-[
-  {
-    "index": 0,
-    "text": "\\n Contains fulltext :\\n 82505.pdf (Publisher\u2019s version ) (Closed access)\\n"
-  }
-]
-
-Extract claims from the chunks above. Return JSON only.
-
---- RESPONSE ---
-[ERROR] [chatgpt] <failed_attempts>
-
-<generation number="1">
-<exception>
-    Error code: 429 - {'error': {'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.', 'type': 'insufficient_quota', 'param': None, 'code': 'insufficient_quota'}}
-</exception>
-<comple
-
-
-========================================================================
-[22:23:38] extract_agent  structured=ClaimsOutput  budget=6/60
-========================================================================
---- MESSAGES SENT ---
-[SYSTEM]
-You are a scientific claim extraction assistant.
-
-You will receive a list of text chunks from a research paper, each labeled with an index number.
-
-For each chunk that contains meaningful scientific content (findings, methods, contributions, or limitations),
-write a concise 1–2 sentence claim summarising the key point.
-
-Skip chunks that are:
-- Navigation text, headers, or HTML boilerplate
-- Reference lists or citations only
-- Very short or uninformative
-
-Return ONLY this JSON — no prose, no markdown:
-{"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
-
-[USER]
-Paper: 
-Authors: Jörg Henseler, Christian M. Ringle, Rudolf R. Sinkovics
-Abstract: \n Contains fulltext :\n 82505.pdf (Publisher’s version ) (Closed access)\n
-
-Chunks (1 total):
-[
-  {
-    "index": 0,
-    "text": "\\n Contains fulltext :\\n 82505.pdf (Publisher\u2019s version ) (Closed access)\\n"
-  }
-]
-
-Extract claims from the chunks above. Return JSON only.
-
---- RESPONSE ---
-[ClaimsOutput]
-{"claims":[]}
-
-
-========================================================================
-[22:23:43] synthesis_agent  structured=SynthesisOutput  budget=7/60
+[04:23:44] synthesis_agent  structured=SynthesisOutput  budget=7/60
 ========================================================================
 --- MESSAGES SENT ---
 [SYSTEM]
@@ -425,21 +237,21 @@ RULES:
 - Place each [citation_XXXX] token immed…
 
 [USER]
-Topic: 'Economic Analysis of Social Interactions'
+Topic: 'Mixture of experts language models'
 
-Pre-verified claims (4 total):
+Pre-verified claims (18 total):
 [
   {
     "citation": "[citation_0001]",
-    "text": "Political Game Theory introduces game theory and its applications to political science, covering topics like choice theory, social choice theory, static and dynamic games, repeated games, bargaining theory, and mechanism design.",
+    "text": "The proposed method reduces memory usage and improves inference speed for more efficient deployment of MoE LLMs.",
     "category": "contribution",
-    "paper_title": "Political Game Theory: An Introduction"
+    "paper_title": "Not All Experts are Equal: Efficient Expert Pruning and Skipping for Mixture-of-Experts Large Language Models"
   },
   {
     "citation": "[citation_0002]",
-    "text": "Economics is broadening its scope to analyze general social interactions beyond mark…
+    "text": "The expert pruning method is based on enumeration of expert combinations, which becomes cumbersome with an increasing number of expert…
 
 --- RESPONSE ---
 [SynthesisOutput]
-{"synthesis":"The field of economics is expanding to incorporate the analysis of broader social interactions, moving beyond traditional market studies [citation_0002]. This shift acknowledges that many aspects of human behavior and societal outcomes are shaped by the complex interplay of individuals and groups in various social contexts. The growing interest in social interactions has been fueled by key developments in several areas of economic theory [citation_0003].\n\nGame theory, with its tools for analyzing strategic interactions, has been particularly influential [citation_0001]. Multiagent systems, which focus on the integration of autonomous entities with diverse interests and information, also play a crucial role in understanding complex social dynamics [citation_0004]. Furthermor…
+{"synthesis":"Mixture of Experts (MoE) models have emerged as a promising approach to scale language models, but their deployment faces challenges related to memory usage, inference speed, and routing efficiency. Recent research focuses on addressing these challenges through various techniques, including expert pruning and skipping, predictive caching, and token scheduling [citation_0001, citation_0013]. These methods aim to optimize the trade-off between model performance and computational cost, enabling more efficient deployment of MoE models. \n\nOne line of work focuses on pruning less important experts to reduce memory footprint and accelerate inference [citation_0003]. This involves identifying and removing redundant experts while maintaining satisfactory performance [citation_0003].…
 

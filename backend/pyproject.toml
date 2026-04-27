@@ -21,6 +21,8 @@ dependencies = [
     "tiktoken>=0.7.0",
     "sentence-transformers>=3.0.0",
     "python-multipart>=0.0.9",
+    "langsmith>=0.1.0",
+    "structlog>=24.1.0",
 ]
 
 [build-system]

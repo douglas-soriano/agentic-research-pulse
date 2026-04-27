@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_model: str = ""
 
+    langchain_tracing_v2: str = "false"
+    langchain_api_key: str = ""
+    langchain_project: str = "researchpulse"
+
     redis_url: str = "redis://localhost:6379/0"
     chroma_host: str = "localhost"
     chroma_port: int = 8000

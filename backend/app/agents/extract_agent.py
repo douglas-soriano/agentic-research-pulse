@@ -5,21 +5,20 @@ Python controls chunk_ids entirely:
   1. semantic_search is called in Python (not via tool) to get real chunks.
   2. The LLM is given the chunks by index and asked only to write claim text.
   3. Python maps each index back to the real chunk_id.
-
-This prevents the small-model habit of inventing chunk_ids that do not exist
-in ChromaDB, which caused all downstream citation verification to fail.
 """
 import json
-import logging
 import time
+
+import structlog
 
 from app.agents.base import BaseAgent, LLMCallBudget
 from app.models.agent_outputs import ClaimsOutput
 from app.models.paper import Paper
 from app.models.claim import Claim
+from app.observability.langsmith import agent_trace
 from app.tools.vector_tools import semantic_search
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 SYSTEM_PROMPT = """You are a scientific claim extraction assistant.
 
@@ -46,68 +45,91 @@ class ExtractAgent(BaseAgent):
 
     def __init__(self, job_id: str, budget: LLMCallBudget | None = None):
         super().__init__(job_id, budget=budget)
-        # No tools — Python drives semantic_search directly.
         self.tools = []
         self.tool_map = {}
 
     def run(self, paper: Paper) -> list[Claim]:
-        # Step 1: fetch real chunks from ChromaDB in Python — trace the search.
-        t0 = time.monotonic()
-        chunks = self._fetch_chunks(paper)
-        self.trace.record_step(
+        bound_log = logger.bind(
             job_id=self.job_id,
-            agent=self.agent_name,
-            tool="semantic_search",
-            input_data={"paper_id": paper.id, "title": paper.title},
-            output_data={"chunks_found": len(chunks)},
-            duration_ms=int((time.monotonic() - t0) * 1000),
-            success=True,
+            agent_name=self.agent_name,
+            paper_id=paper.id,
+            arxiv_id=paper.arxiv_id,
         )
 
-        if not chunks:
-            logger.info("ExtractAgent: no chunks found for paper %s (%s)", paper.arxiv_id, paper.title)
-            return []
-
-        # Step 2: ask LLM to write claim text only — it never sees chunk_ids.
-        chunks_payload = [
-            {"index": i, "text": c["text"][:600]}
-            for i, c in enumerate(chunks)
-        ]
-
-        messages = [
-            {
-                "role": "user",
-                "content": (
-                    f"Paper: {paper.title}\n"
-                    f"Authors: {', '.join(paper.authors[:3])}\n"
-                    f"Abstract: {paper.abstract[:300]}\n\n"
-                    f"Chunks ({len(chunks)} total):\n"
-                    f"{json.dumps(chunks_payload, indent=2)}\n\n"
-                    f"Extract claims from the chunks above. Return JSON only."
-                ),
-            }
-        ]
-
-        t1 = time.monotonic()
-        claims = self._extract_with_structured(messages, chunks, paper)
-
-        self.trace.record_step(
+        with agent_trace(
+            "extract_agent",
+            run_type="chain",
             job_id=self.job_id,
-            agent=self.agent_name,
-            tool="extract_claims",
-            input_data={"paper_id": paper.id, "chunks_presented": len(chunks)},
-            output_data={"claims_extracted": len(claims)},
-            duration_ms=int((time.monotonic() - t1) * 1000),
-            success=True,
-        )
-        return claims
+            paper_id=paper.id,
+            paper_title=paper.title,
+        ):
+            # Step 1: fetch chunks from ChromaDB
+            t0 = time.monotonic()
+            chunks = self._fetch_chunks(paper)
+            self.trace.record_step(
+                job_id=self.job_id,
+                agent=self.agent_name,
+                tool="semantic_search",
+                input_data={"paper_id": paper.id, "title": paper.title},
+                output_data={"chunks_found": len(chunks)},
+                duration_ms=int((time.monotonic() - t0) * 1000),
+                success=True,
+            )
+            bound_log.info("chunks_fetched", chunks_found=len(chunks), step="semantic_search")
+
+            if not chunks:
+                bound_log.info("no_chunks", step="semantic_search")
+                return []
+
+            # Step 2: ask LLM to write claim text only
+            chunks_payload = [
+                {"index": i, "text": c["text"][:600]}
+                for i, c in enumerate(chunks)
+            ]
+
+            messages = [
+                {
+                    "role": "user",
+                    "content": (
+                        f"Paper: {paper.title}\n"
+                        f"Authors: {', '.join(paper.authors[:3])}\n"
+                        f"Abstract: {paper.abstract[:300]}\n\n"
+                        f"Chunks ({len(chunks)} total):\n"
+                        f"{json.dumps(chunks_payload, indent=2)}\n\n"
+                        f"Extract claims from the chunks above. Return JSON only."
+                    ),
+                }
+            ]
+
+            t1 = time.monotonic()
+            claims, usage = self._extract_with_structured(messages, chunks, paper)
+            duration_ms = int((time.monotonic() - t1) * 1000)
+
+            self.trace.record_step(
+                job_id=self.job_id,
+                agent=self.agent_name,
+                tool="extract_claims",
+                input_data={"paper_id": paper.id, "chunks_presented": len(chunks)},
+                output_data={"claims_extracted": len(claims)},
+                duration_ms=duration_ms,
+                success=True,
+                token_count=usage.get("total_tokens"),
+                cost_usd=usage.get("cost_usd"),
+            )
+            bound_log.info(
+                "claims_extracted",
+                claims_count=len(claims),
+                token_count=usage.get("total_tokens"),
+                cost_usd=usage.get("cost_usd"),
+                step="extract_claims",
+            )
+            return claims
 
     def _extract_with_structured(
         self, messages: list[dict], chunks: list[dict], paper: Paper
-    ) -> list[Claim]:
-        """Call LLM with Pydantic validation via instructor, map indices to real chunk_ids."""
+    ) -> tuple[list[Claim], dict]:
         try:
-            output: ClaimsOutput = self._run_structured(
+            output, usage = self._run_structured(
                 ClaimsOutput,
                 messages=messages,
                 system=SYSTEM_PROMPT,
@@ -116,17 +138,22 @@ class ExtractAgent(BaseAgent):
             )
         except Exception as exc:
             logger.warning(
-                "ExtractAgent: structured extraction failed for %s (%s) — returning 0 claims",
-                paper.arxiv_id, exc,
+                "extraction_failed",
+                arxiv_id=paper.arxiv_id,
+                error=str(exc),
+                agent=self.agent_name,
+                step="extract_claims",
             )
-            return []
+            return [], {}
 
         claims: list[Claim] = []
         for item in output.claims:
             if item.index < 0 or item.index >= len(chunks):
-                logger.debug(
-                    "ExtractAgent: index %d out of range (chunks: %d) — skipped",
-                    item.index, len(chunks),
+                logger.warning(
+                    "invalid_chunk_index",
+                    index=item.index,
+                    total_chunks=len(chunks),
+                    agent=self.agent_name,
                 )
                 continue
             chunk = chunks[item.index]
@@ -139,16 +166,14 @@ class ExtractAgent(BaseAgent):
             ))
 
         logger.info(
-            "ExtractAgent: extracted %d valid claims from paper %s",
-            len(claims), paper.arxiv_id,
+            "valid_claims_mapped",
+            valid_claims=len(claims),
+            arxiv_id=paper.arxiv_id,
+            agent=self.agent_name,
         )
-        return claims
-
-    # ------------------------------------------------------------------
+        return claims, usage
 
     def _fetch_chunks(self, paper: Paper) -> list[dict]:
-        """Run several semantic queries against this paper's chunks in ChromaDB.
-        Returns a deduplicated list capped at MAX_CHUNKS_PER_PAPER."""
         queries = [
             f"{paper.title} main contribution findings",
             f"{paper.title} methodology approach",
@@ -164,9 +189,19 @@ class ExtractAgent(BaseAgent):
                     if cid and cid not in seen:
                         seen[cid] = chunk
             except Exception as exc:
-                logger.warning("ExtractAgent: semantic_search failed for paper %s: %s", paper.arxiv_id, exc)
+                logger.warning(
+                    "semantic_search_failed",
+                    arxiv_id=paper.arxiv_id,
+                    error=str(exc),
+                    agent=self.agent_name,
+                    step="semantic_search",
+                )
 
         chunks = list(seen.values())[:self.MAX_CHUNKS_PER_PAPER]
-        logger.debug("ExtractAgent: found %d unique chunks for paper %s", len(chunks), paper.arxiv_id)
+        logger.info(
+            "chunks_deduped",
+            unique_chunks=len(chunks),
+            arxiv_id=paper.arxiv_id,
+            agent=self.agent_name,
+        )
         return chunks
-

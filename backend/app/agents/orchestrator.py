@@ -7,13 +7,13 @@ Also drives the task lifecycle SSE stream:
   started (published here at the top of run())
   done / failed (published here at completion)
 """
-import logging
+import re
 import time
 from datetime import datetime
 
-from app.agents.base import LLMCallBudget, init_llm_log
+import structlog
 
-logger = logging.getLogger(__name__)
+from app.agents.base import LLMCallBudget, init_llm_log
 from app.agents.search_agent import SearchAgent
 from app.agents.extract_agent import ExtractAgent
 from app.agents.synthesis_agent import SynthesisAgent
@@ -21,10 +21,13 @@ from app.config import settings
 from app.database import get_session, TopicRow
 from app.models.claim import Claim
 from app.models.review import ReviewCreate
+from app.observability.langsmith import agent_trace
 from app.services.paper_service import PaperService
 from app.services.review_service import ReviewService
 from app.services.stream_service import stream_service
 from app.services.trace_service import TraceService
+
+logger = structlog.get_logger(__name__)
 
 
 class Orchestrator:
@@ -35,7 +38,6 @@ class Orchestrator:
         self.review_service = ReviewService()
 
     def _mark_topic_fetched(self, topic_id: str) -> None:
-        """Stamp last_fetched_at so the home page status dot turns green."""
         try:
             with get_session() as session:
                 topic = session.query(TopicRow).filter_by(id=topic_id).first()
@@ -43,23 +45,16 @@ class Orchestrator:
                     topic.last_fetched_at = datetime.utcnow()
                     session.commit()
         except Exception as exc:
-            logger.warning("Orchestrator: could not update last_fetched_at for %s: %s", topic_id, exc)
+            logger.warning(
+                "mark_topic_fetched_failed",
+                topic_id=topic_id,
+                error=str(exc),
+                agent="orchestrator",
+                job_id=self.job_id,
+            )
 
     @staticmethod
     def _papers_are_relevant(topic: str, papers_meta: list[dict]) -> bool:
-        """Return False when arXiv fuzzy-matching returns unrelated results.
-
-        Extracts 'significant' tokens from the topic — tokens that contain a
-        digit, are all-caps (acronym), or are long enough to be domain-specific
-        (≥7 chars).  If at least one such token exists, every paper is checked:
-        if NONE of them mentions any significant token in title or abstract,
-        the results are considered irrelevant (e.g. topic = 'asdijon3').
-
-        Common topics without unusual tokens ('deep learning', 'neural networks')
-        always pass and are returned as relevant.
-        """
-        import re
-
         _STOPWORDS = {
             "for", "in", "of", "the", "a", "an", "and", "or", "with",
             "on", "at", "to", "is", "are", "by", "from", "using", "via",
@@ -72,16 +67,14 @@ class Orchestrator:
             low = tok.lower()
             if low in _STOPWORDS:
                 continue
-            if (any(c.isdigit() for c in tok)          # contains digit: "asdijon3"
-                    or (tok.isupper() and len(tok) >= 2)  # acronym: "RAG", "BERT"
-                    or len(tok) >= 7):                    # long word: "ektromos"
+            if (any(c.isdigit() for c in tok)
+                    or (tok.isupper() and len(tok) >= 2)
+                    or len(tok) >= 7):
                 significant.append(low)
 
         if not significant:
-            # No unusual tokens — topic is ordinary prose, trust arXiv results
             return True
 
-        # Check whether any paper mentions at least one significant token
         for paper in papers_meta:
             corpus = (
                 paper.get("title", "") + " " + paper.get("abstract", "")
@@ -90,158 +83,202 @@ class Orchestrator:
                 return True
 
         logger.warning(
-            "Orchestrator: none of the significant tokens %s appear in any "
-            "returned paper — treating search as no results for topic %r",
-            significant, topic,
+            "irrelevant_papers",
+            significant_tokens=significant,
+            topic=topic,
+            agent="orchestrator",
+            job_id=self.job_id,
         )
         return False
 
     def run(self, topic_id: str, topic_name: str, max_papers: int = 8) -> dict:
+        bound_log = logger.bind(job_id=self.job_id, agent_name="orchestrator", step="start")
         start_wall = time.monotonic()
-        self.trace.start(self.job_id, topic_name)
-        stream_service.task_started(self.job_id)
 
-        try:
-            init_llm_log(topic_name, self.job_id)
-            # One shared budget for the entire job — all agents draw from it.
-            budget = LLMCallBudget(settings.max_llm_calls_per_job)
+        with agent_trace(
+            "pipeline_run",
+            run_type="chain",
+            job_id=self.job_id,
+            topic=topic_name,
+            max_papers=max_papers,
+        ):
+            self.trace.start(self.job_id, topic_name)
+            stream_service.task_started(self.job_id)
+            bound_log.info("pipeline_started", topic=topic_name)
 
-            # Phase 1: Search (3 sub-queries, merged)
-            search_agent = SearchAgent(self.job_id, budget=budget)
-            papers_meta = search_agent.run(topic_name, max_papers=max_papers)
+            try:
+                init_llm_log(topic_name, self.job_id)
+                budget = LLMCallBudget(settings.max_llm_calls_per_job)
 
-            # Relevance gate — discard results when arXiv fuzzy-search returns
-            # unrelated papers for an unknown/nonsense topic term.
-            if papers_meta and not self._papers_are_relevant(topic_name, papers_meta):
-                papers_meta = []
+                # Phase 1: Search
+                with agent_trace("search_phase", run_type="chain", job_id=self.job_id, topic=topic_name):
+                    search_agent = SearchAgent(self.job_id, budget=budget)
+                    papers_meta = search_agent.run(topic_name, max_papers=max_papers)
 
-            if not papers_meta:
-                logger.warning("SearchAgent found no papers for topic: %r", topic_name)
+                if papers_meta and not self._papers_are_relevant(topic_name, papers_meta):
+                    papers_meta = []
+
+                if not papers_meta:
+                    logger.warning(
+                        "no_papers_found",
+                        topic=topic_name,
+                        agent_name="orchestrator",
+                        job_id=self.job_id,
+                        step="search",
+                    )
+                    synthesis_result = {
+                        "synthesis": "No papers found for this topic on arXiv. Try a broader or different search term.",
+                        "citations": {},
+                        "cited_papers": [],
+                        "citations_verified": 0,
+                        "citations_rejected": 0,
+                    }
+                    review = self.review_service.save(
+                        ReviewCreate(
+                            topic_id=topic_id,
+                            topic_name=topic_name,
+                            synthesis=synthesis_result["synthesis"],
+                            citations={},
+                            cited_papers=[],
+                            papers_processed=0,
+                            claims_extracted=0,
+                            citations_verified=0,
+                            citations_rejected=0,
+                        )
+                    )
+                    self._mark_topic_fetched(topic_id)
+                    total_ms = int((time.monotonic() - start_wall) * 1000)
+                    stats = {
+                        "total_duration_ms": total_ms,
+                        "papers_processed": 0,
+                        "claims_extracted": 0,
+                        "citations_verified": 0,
+                        "citations_rejected": 0,
+                    }
+                    self.trace.complete(self.job_id, stats)
+                    stream_service.task_done(self.job_id, review_id=review.id, stats=stats)
+                    return {"review_id": review.id, **stats}
+
+                # Phase 2: Ingest
+                papers = []
+                with agent_trace("ingest_phase", run_type="chain", job_id=self.job_id, papers_count=len(papers_meta)):
+                    for meta in papers_meta:
+                        paper = self.paper_service.ingest(meta, topic_id)
+                        if paper:
+                            papers.append(paper)
+
+                embedded = [p for p in papers if p.embedded]
+                if not embedded:
+                    logger.warning(
+                        "no_embedded_papers",
+                        total_papers=len(papers),
+                        agent_name="orchestrator",
+                        job_id=self.job_id,
+                        step="ingest",
+                    )
+                    synthesis_result = {
+                        "synthesis": "Papers were retrieved but none could be embedded for this topic. "
+                                     "This may happen when arXiv returns unrelated results for an unknown search term.",
+                        "citations": {},
+                        "cited_papers": [],
+                        "citations_verified": 0,
+                        "citations_rejected": 0,
+                    }
+                    review = self.review_service.save(
+                        ReviewCreate(
+                            topic_id=topic_id, topic_name=topic_name,
+                            synthesis=synthesis_result["synthesis"],
+                            citations={}, cited_papers=[],
+                            papers_processed=0, claims_extracted=0,
+                            citations_verified=0, citations_rejected=0,
+                        )
+                    )
+                    self._mark_topic_fetched(topic_id)
+                    total_ms = int((time.monotonic() - start_wall) * 1000)
+                    stats = {
+                        "total_duration_ms": total_ms,
+                        "papers_processed": 0,
+                        "claims_extracted": 0,
+                        "citations_verified": 0,
+                        "citations_rejected": 0,
+                    }
+                    self.trace.complete(self.job_id, stats)
+                    stream_service.task_done(self.job_id, review_id=review.id, stats=stats)
+                    return {"review_id": review.id, **stats}
+
+                papers = embedded
+
+                # Phase 3: Extract claims
+                with agent_trace("extract_phase", run_type="chain", job_id=self.job_id, papers_count=len(papers)):
+                    extract_agent = ExtractAgent(self.job_id, budget=budget)
+                    all_claims: list[Claim] = []
+                    for paper in papers:
+                        if not paper.embedded:
+                            continue
+                        claims = extract_agent.run(paper)
+                        all_claims.extend(claims)
+
+                # Phase 4: Synthesise
                 synthesis_result = {
-                    "synthesis": "No papers found for this topic on arXiv. Try a broader or different search term.",
+                    "synthesis": (
+                        "No claims could be extracted from the retrieved papers. "
+                        "The papers may not contain enough structured content, "
+                        "or try a more specific search term."
+                    ),
                     "citations": {},
                     "cited_papers": [],
                     "citations_verified": 0,
                     "citations_rejected": 0,
                 }
+                if all_claims:
+                    with agent_trace("synthesis_phase", run_type="chain", job_id=self.job_id, claims_count=len(all_claims)):
+                        synth_agent = SynthesisAgent(self.job_id, budget=budget)
+                        synthesis_result = synth_agent.run(topic_name, all_claims, papers)
+
+                # Phase 5: Persist review
                 review = self.review_service.save(
                     ReviewCreate(
                         topic_id=topic_id,
                         topic_name=topic_name,
                         synthesis=synthesis_result["synthesis"],
-                        citations={},
-                        cited_papers=[],
-                        papers_processed=0,
-                        claims_extracted=0,
-                        citations_verified=0,
-                        citations_rejected=0,
+                        citations=synthesis_result["citations"],
+                        cited_papers=synthesis_result["cited_papers"],
+                        papers_processed=len(papers),
+                        claims_extracted=len(all_claims),
+                        citations_verified=synthesis_result["citations_verified"],
+                        citations_rejected=synthesis_result["citations_rejected"],
                     )
                 )
-                self._mark_topic_fetched(topic_id)
+
                 total_ms = int((time.monotonic() - start_wall) * 1000)
                 stats = {
                     "total_duration_ms": total_ms,
-                    "papers_processed": 0,
-                    "claims_extracted": 0,
-                    "citations_verified": 0,
-                    "citations_rejected": 0,
+                    "papers_processed": len(papers),
+                    "claims_extracted": len(all_claims),
+                    "citations_verified": synthesis_result["citations_verified"],
+                    "citations_rejected": synthesis_result["citations_rejected"],
                 }
-                self.trace.complete(self.job_id, stats)
-                stream_service.task_done(self.job_id, review_id=review.id, stats=stats)
-                return {"review_id": review.id, **stats}
-
-            # Phase 2: Ingest (fetch + embed) each paper
-            papers = []
-            for meta in papers_meta:
-                paper = self.paper_service.ingest(meta, topic_id)
-                if paper:
-                    papers.append(paper)
-
-            embedded = [p for p in papers if p.embedded]
-            if not embedded:
-                logger.warning("Orchestrator: SearchAgent returned %d papers but none could be embedded.", len(papers))
-                synthesis_result = {
-                    "synthesis": "Papers were retrieved but none could be embedded for this topic. "
-                                 "This may happen when arXiv returns unrelated results for an unknown search term.",
-                    "citations": {},
-                    "cited_papers": [],
-                    "citations_verified": 0,
-                    "citations_rejected": 0,
-                }
-                review = self.review_service.save(
-                    ReviewCreate(
-                        topic_id=topic_id, topic_name=topic_name,
-                        synthesis=synthesis_result["synthesis"],
-                        citations={}, cited_papers=[],
-                        papers_processed=0, claims_extracted=0,
-                        citations_verified=0, citations_rejected=0,
-                    )
-                )
                 self._mark_topic_fetched(topic_id)
-                total_ms = int((time.monotonic() - start_wall) * 1000)
-                stats = {"total_duration_ms": total_ms, "papers_processed": 0,
-                         "claims_extracted": 0, "citations_verified": 0, "citations_rejected": 0}
                 self.trace.complete(self.job_id, stats)
                 stream_service.task_done(self.job_id, review_id=review.id, stats=stats)
-                return {"review_id": review.id, **stats}
 
-            papers = embedded
-
-            # Phase 3: Extract claims — reuse same agent instance across papers
-            # so the shared budget is honoured without re-instantiating.
-            extract_agent = ExtractAgent(self.job_id, budget=budget)
-            all_claims: list[Claim] = []
-            for paper in papers:
-                if not paper.embedded:
-                    continue
-                claims = extract_agent.run(paper)
-                all_claims.extend(claims)
-
-            # Phase 4: Synthesise with citation grounding
-            synthesis_result = {
-                "synthesis": (
-                    "No claims could be extracted from the retrieved papers. "
-                    "The papers may not contain enough structured content, "
-                    "or try a more specific search term."
-                ),
-                "citations": {},
-                "cited_papers": [],
-                "citations_verified": 0,
-                "citations_rejected": 0,
-            }
-            if all_claims:
-                synth_agent = SynthesisAgent(self.job_id, budget=budget)
-                synthesis_result = synth_agent.run(topic_name, all_claims, papers)
-
-            # Phase 5: Persist review
-            review = self.review_service.save(
-                ReviewCreate(
-                    topic_id=topic_id,
-                    topic_name=topic_name,
-                    synthesis=synthesis_result["synthesis"],
-                    citations=synthesis_result["citations"],
-                    cited_papers=synthesis_result["cited_papers"],
+                bound_log.info(
+                    "pipeline_completed",
+                    total_duration_ms=total_ms,
                     papers_processed=len(papers),
                     claims_extracted=len(all_claims),
                     citations_verified=synthesis_result["citations_verified"],
-                    citations_rejected=synthesis_result["citations_rejected"],
                 )
-            )
+                return {"review_id": review.id, **stats}
 
-            total_ms = int((time.monotonic() - start_wall) * 1000)
-            stats = {
-                "total_duration_ms": total_ms,
-                "papers_processed": len(papers),
-                "claims_extracted": len(all_claims),
-                "citations_verified": synthesis_result["citations_verified"],
-                "citations_rejected": synthesis_result["citations_rejected"],
-            }
-            self._mark_topic_fetched(topic_id)
-            self.trace.complete(self.job_id, stats)
-            stream_service.task_done(self.job_id, review_id=review.id, stats=stats)
-            return {"review_id": review.id, **stats}
-
-        except Exception as exc:
-            self.trace.fail(self.job_id, str(exc))
-            stream_service.task_failed(self.job_id, error=str(exc))
-            raise
+            except Exception as exc:
+                logger.error(
+                    "pipeline_failed",
+                    error=str(exc),
+                    agent_name="orchestrator",
+                    job_id=self.job_id,
+                    step="unknown",
+                )
+                self.trace.fail(self.job_id, str(exc))
+                stream_service.task_failed(self.job_id, error=str(exc))
+                raise

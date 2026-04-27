@@ -4,11 +4,15 @@ fetch full text → store in DB → chunk + embed → mark embedded.
 """
 from datetime import datetime
 
+import structlog
+
 from app.database import get_session
 from app.models.paper import Paper, PaperCreate
 from app.repositories.paper_repository import PaperRepository
 from app.services.embedding_service import EmbeddingService
 from app.tools.arxiv_tools import fetch_paper
+
+logger = structlog.get_logger(__name__)
 
 
 class PaperService:
@@ -27,7 +31,8 @@ class PaperService:
             repo = PaperRepository(session)
             existing = repo.get_by_arxiv_id(paper_meta["arxiv_id"])
             if existing and existing.embedded:
-                return existing  # Already fully processed
+                logger.info("paper_already_embedded", arxiv_id=paper_meta["arxiv_id"])
+                return existing
 
             if not existing:
                 paper = repo.create(
@@ -70,6 +75,7 @@ class PaperService:
             repo = PaperRepository(session)
             repo.mark_embedded(paper.id, chunk_count)
             refreshed = repo.get_by_arxiv_id(paper.arxiv_id)
+            logger.info("paper_ingested", arxiv_id=paper.arxiv_id, chunk_count=chunk_count)
             return refreshed or paper
 
     def get_papers_for_topic(self, topic_id: str) -> list[Paper]:
