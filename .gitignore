@@ -10,3 +10,5 @@ __pycache__/
 celerybeat-schedule
 .next/
 node_modules/
+.claude/
+.rules/
