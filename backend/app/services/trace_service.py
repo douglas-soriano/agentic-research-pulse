@@ -1,7 +1,3 @@
-"""
-TraceService — records every agent tool call for observability and
-publishes each step to the real-time SSE stream via StreamService.
-"""
 import time
 from contextlib import contextmanager
 from datetime import datetime
@@ -52,8 +48,8 @@ class TraceService:
 
         try:
             stream_service.trace_step(job_id, step.model_dump(mode="json"))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("trace_stream_publish_failed", job_id=job_id, error=str(exc))
 
     def complete(self, job_id: str, stats: dict) -> None:
         with get_session() as session:
@@ -75,6 +71,11 @@ class TraceService:
             repo = TraceRepository(session)
             return repo.list_recent(limit)
 
+    def latest_job_ids(self, topic_names: list[str]) -> dict[str, str]:
+        with get_session() as session:
+            repo = TraceRepository(session)
+            return repo.latest_job_ids_by_topic(topic_names)
+
     @contextmanager
     def timed_tool(
         self,
@@ -91,10 +92,10 @@ class TraceService:
         error = None
         try:
             yield output
-        except Exception as e:
+        except Exception as exc:
             success = False
-            error = str(e)
-            output["error"] = str(e)
+            error = str(exc)
+            output["error"] = str(exc)
             raise
         finally:
             duration_ms = int((time.monotonic() - start) * 1000)

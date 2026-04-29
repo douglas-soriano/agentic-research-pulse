@@ -1,7 +1,3 @@
-"""
-Unit tests for verify_citation.
-ChromaDB calls are mocked via the chroma_collection fixture (ephemeral client).
-"""
 import pytest
 
 from app.tools.synthesis_tools import verify_citation

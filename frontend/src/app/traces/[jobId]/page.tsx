@@ -20,7 +20,7 @@ const C = {
   danger:      "#e45b5b",
 } as const;
 
-// ── Types ──────────────────────────────────────────────────────────────────
+
 interface TaskEvent {
   event: "queued" | "started" | "done" | "failed";
   job_id: string;
@@ -48,7 +48,7 @@ interface TraceStep {
   timestamp: string;
 }
 
-// ── Pipeline model ─────────────────────────────────────────────────────────
+
 const TOOL_LABEL: Record<string, string> = {
   plan_queries:          "Planning search strategy",
   parallel_arxiv_search: "Searching arXiv",
@@ -67,12 +67,12 @@ const TOOL_COLOR: Record<string, string> = {
   synthesize:            C.success,
 };
 
-// Fixed pipeline order
+
 const TOOL_SEQUENCE = [
   "plan_queries",
   "parallel_arxiv_search",
-  "semantic_search",   // repeats per paper
-  "extract_claims",    // repeats per paper
+  "semantic_search",
+  "extract_claims",
   "verify_citations",
   "synthesize",
 ];
@@ -117,7 +117,7 @@ function nestedItems(step: TraceStep): string[] {
   return [];
 }
 
-// ── Workflow builder ───────────────────────────────────────────────────────
+
 type StepStatus = "done" | "running" | "failed" | "pending";
 
 interface WorkflowItem {
@@ -133,14 +133,14 @@ interface WorkflowItem {
 }
 
 function buildWorkflow(steps: TraceStep[], isLive: boolean): WorkflowItem[] {
-  // Group steps by tool
+
   const byTool: Record<string, TraceStep[]> = {};
   for (const s of steps) {
     if (!s.tool) continue;
     (byTool[s.tool] ??= []).push(s);
   }
 
-  // Find the index of the last tool seen, to infer what's running next
+
   let lastSeenIdx = -1;
   for (const s of steps) {
     const i = TOOL_SEQUENCE.indexOf(s.tool ?? "");
@@ -164,7 +164,7 @@ function buildWorkflow(steps: TraceStep[], isLive: boolean): WorkflowItem[] {
     const last = toolSteps[toolSteps.length - 1];
     const baseDesc = last ? describeStep(last) : (status === "running" ? "Working…" : "");
 
-    // For per-paper steps, prefix with paper count
+
     const isPerPaper = tool === "semantic_search" || tool === "extract_claims";
     const description = isPerPaper && toolSteps.length > 0
       ? `${toolSteps.length} paper${toolSteps.length !== 1 ? "s" : ""} · ${baseDesc}`
@@ -180,7 +180,7 @@ function buildWorkflow(steps: TraceStep[], isLive: boolean): WorkflowItem[] {
   });
 }
 
-// ── Step status dot ────────────────────────────────────────────────────────
+
 function StepDot({ status }: { status: StepStatus }) {
   if (status === "running") {
     return (
@@ -213,7 +213,7 @@ function StepDot({ status }: { status: StepStatus }) {
       </div>
     );
   }
-  // pending — dashed ring
+
   return (
     <div style={{
       width: 20, height: 20, borderRadius: "50%",
@@ -223,7 +223,7 @@ function StepDot({ status }: { status: StepStatus }) {
   );
 }
 
-// ── Timeline item ──────────────────────────────────────────────────────────
+
 function TimelineItem({ item, isLast }: { item: WorkflowItem; isLast: boolean }) {
   const [open, setOpen] = useState(false);
   const canExpand = item.steps.length > 0;
@@ -233,7 +233,7 @@ function TimelineItem({ item, isLast }: { item: WorkflowItem; isLast: boolean })
 
   return (
     <div className="step-enter" style={{ display: "flex", gap: "0.75rem" }}>
-      {/* Left column: dot + connector line */}
+      {}
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 2, flexShrink: 0 }}>
         <StepDot status={item.status} />
         {!isLast && (
@@ -245,9 +245,9 @@ function TimelineItem({ item, isLast }: { item: WorkflowItem; isLast: boolean })
         )}
       </div>
 
-      {/* Right column: content */}
+      {}
       <div style={{ flex: 1, paddingBottom: isLast ? 0 : "1.125rem" }}>
-        {/* Row: label + duration + details toggle */}
+        {}
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
           <span style={{
             fontWeight: 600, fontSize: "0.9rem",
@@ -280,7 +280,7 @@ function TimelineItem({ item, isLast }: { item: WorkflowItem; isLast: boolean })
           )}
         </div>
 
-        {/* Description */}
+        {}
         {item.description && (
           <p style={{
             margin: "0.2rem 0 0",
@@ -292,7 +292,7 @@ function TimelineItem({ item, isLast }: { item: WorkflowItem; isLast: boolean })
           </p>
         )}
 
-        {/* Nested items (e.g., generated queries) */}
+        {}
         {isDone && item.nested.length > 0 && (
           <ul style={{ margin: "0.4rem 0 0", paddingLeft: "1rem", listStyle: "none" }}>
             {item.nested.map((n, i) => (
@@ -308,7 +308,7 @@ function TimelineItem({ item, isLast }: { item: WorkflowItem; isLast: boolean })
           </ul>
         )}
 
-        {/* Running indicator */}
+        {}
         {isRunning && (
           <div style={{
             display: "inline-flex", alignItems: "center", gap: "0.4rem",
@@ -324,7 +324,7 @@ function TimelineItem({ item, isLast }: { item: WorkflowItem; isLast: boolean })
           </div>
         )}
 
-        {/* Expandable technical details */}
+        {}
         {open && (
           <div className="slide-down" style={{
             marginTop: "0.625rem",
@@ -384,7 +384,7 @@ function TimelineItem({ item, isLast }: { item: WorkflowItem; isLast: boolean })
   );
 }
 
-// ── Status pill ────────────────────────────────────────────────────────────
+
 function StatusPill({ label, elapsed }: { label: string; elapsed: number }) {
   return (
     <div style={{
@@ -403,7 +403,7 @@ function StatusPill({ label, elapsed }: { label: string; elapsed: number }) {
   );
 }
 
-// ── Stats row ──────────────────────────────────────────────────────────────
+
 function StatsRow({ ev }: { ev: TaskEvent }) {
   const items = [
     { label: "papers",    value: ev.papers_processed,  color: C.info    },
@@ -429,7 +429,7 @@ function StatsRow({ ev }: { ev: TaskEvent }) {
   );
 }
 
-// ── Page ───────────────────────────────────────────────────────────────────
+
 export default function TracePage({ params }: { params: { jobId: string } }) {
   const [status,    setStatus]    = useState("connecting");
   const [taskEvent, setTaskEvent] = useState<TaskEvent | null>(null);
@@ -448,7 +448,7 @@ export default function TracePage({ params }: { params: { jobId: string } }) {
         setStatus(ev.event);
         if (ev.event === "started" && !startRef.current) startRef.current = Date.now();
         if (ev.event === "done" || ev.event === "failed") taskEs.close();
-      } catch { /* ignore */ }
+      } catch {  }
     };
     taskEs.onerror = () => setStatus(s => s === "connecting" ? "error" : s);
 
@@ -458,13 +458,13 @@ export default function TracePage({ params }: { params: { jobId: string } }) {
         const ev = JSON.parse(e.data);
         if (ev.event === "step") setSteps(prev => [...prev, ev as TraceStep]);
         if (ev.event === "done" || ev.event === "failed") traceEs.close();
-      } catch { /* ignore */ }
+      } catch {  }
     };
 
     return () => { taskEs.close(); traceEs.close(); };
   }, [params.jobId]);
 
-  // Elapsed time counter
+
   useEffect(() => {
     if (status !== "started") return;
     const t = setInterval(() => {
@@ -486,7 +486,7 @@ export default function TracePage({ params }: { params: { jobId: string } }) {
 
   return (
     <main>
-      {/* Back */}
+      {}
       <Link href="/" style={{
         color: C.textMut, fontSize: "0.8rem", textDecoration: "none",
         display: "inline-block", marginBottom: "1rem",
@@ -494,7 +494,7 @@ export default function TracePage({ params }: { params: { jobId: string } }) {
         ← Back
       </Link>
 
-      {/* Heading */}
+      {}
       <h2 style={{
         margin: "0 0 0.25rem",
         fontSize: "1.35rem", fontWeight: 700, letterSpacing: "-0.015em",
@@ -509,10 +509,10 @@ export default function TracePage({ params }: { params: { jobId: string } }) {
         {" · "}job {params.jobId.slice(0, 8)}…
       </p>
 
-      {/* Status pill — only while running */}
+      {}
       {isLive && <StatusPill label={pillLabel} elapsed={elapsed} />}
 
-      {/* Failure banner */}
+      {}
       {isFailed && (
         <div className="fade-in" style={{
           padding: "0.875rem 1rem", marginBottom: "1.25rem",
@@ -524,10 +524,10 @@ export default function TracePage({ params }: { params: { jobId: string } }) {
         </div>
       )}
 
-      {/* Completion stats */}
+      {}
       {isDone && taskEvent && <StatsRow ev={taskEvent} />}
 
-      {/* View review button */}
+      {}
       {isDone && taskEvent?.review_id && (
         <div style={{ marginBottom: "1.5rem" }}>
           <Link href={`/review/${taskEvent.review_id}`} style={{
@@ -543,7 +543,7 @@ export default function TracePage({ params }: { params: { jobId: string } }) {
         </div>
       )}
 
-      {/* ── Workflow timeline card ────────────────────────────────────── */}
+      {}
       <div style={{
         background: C.surface,
         border: `1px solid ${C.border}`,
@@ -551,7 +551,7 @@ export default function TracePage({ params }: { params: { jobId: string } }) {
         padding: "1.375rem 1.5rem 1rem",
         boxShadow: "0 2px 16px rgba(0,0,0,0.05)",
       }}>
-        {/* Card header */}
+        {}
         <div style={{
           display: "flex", alignItems: "center", gap: "0.5rem",
           marginBottom: "1.375rem",
@@ -575,7 +575,7 @@ export default function TracePage({ params }: { params: { jobId: string } }) {
           )}
         </div>
 
-        {/* Steps */}
+        {}
         {workflow.map((item, i) => (
           <TimelineItem
             key={item.id}

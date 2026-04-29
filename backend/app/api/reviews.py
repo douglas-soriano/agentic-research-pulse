@@ -17,7 +17,6 @@ class CitedPaperResponse(BaseModel):
 
 
 class CitationEntryResponse(BaseModel):
-    """Single entry in the citations map: keyed by the 4-digit token XXXX."""
     paper_id: str
     arxiv_id: str
     title: str
@@ -29,11 +28,11 @@ class ReviewResponse(BaseModel):
     id: str
     topic_id: str
     topic_name: str
-    # Synthesis text with inline [citation_XXXX] tokens.
-    # Never rewrite this field — render it by substituting tokens from the map below.
+
+
     synthesis: str
-    # Map from token key ("0001") → citation metadata.
-    # Frontend resolves [citation_0001] → citations["0001"]
+
+
     citations: dict[str, CitationEntryResponse]
     cited_papers: list[CitedPaperResponse]
     papers_processed: int
@@ -81,7 +80,7 @@ def _to_response(review) -> ReviewResponse:
 
 @router.get("/{id}", response_model=ReviewResponse)
 def get_review(id: str):
-    # Accept either review_id (from trace page) or topic_id (from topics list)
+
     review = review_service.get_by_id(id) or review_service.get_latest(id)
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")

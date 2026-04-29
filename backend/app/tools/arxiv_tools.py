@@ -1,7 +1,3 @@
-"""
-arXiv tool definitions for agents.
-All external HTTP calls use tenacity retry (1s→2s→4s, up to 3 retries).
-"""
 import time
 import urllib.parse
 from datetime import datetime
@@ -10,7 +6,20 @@ import feedparser
 import httpx
 import structlog
 
+from app.constants import (
+    ARXIV_ABSTRACT_MAX_CHARS,
+    ARXIV_BACKOFF_SECONDS,
+    ARXIV_DEFAULT_MAX_RESULTS,
+    ARXIV_MAX_RESULTS,
+    ARXIV_MIN_EXTRACTED_TEXT_CHARS,
+    ARXIV_MIN_HTML_CHARS,
+    ARXIV_RATE_LIMIT_SECONDS,
+    EXTRACTED_TEXT_MAX_CHARS,
+    HTTP_TIMEOUT_SECONDS,
+)
+from app.exceptions import ExternalServiceError
 from app.resilience.retry import http_retry
+from app.utils.time import utc_now
 
 logger = structlog.get_logger(__name__)
 
@@ -18,38 +27,37 @@ ARXIV_API = "https://export.arxiv.org/api/query"
 ARXIV_HTML_URL = "https://ar5iv.labs.arxiv.org/html/{arxiv_id}"
 
 
-def search_arxiv(query: str, max_results: int = 5) -> dict:
-    """Search arXiv and return structured paper metadata."""
-    # arXiv asks automated clients to wait at least 3 s between requests.
-    time.sleep(3)
-    max_results = min(max_results, 5)
+def search_arxiv(query: str, max_results: int = ARXIV_DEFAULT_MAX_RESULTS) -> dict:
+    time.sleep(ARXIV_RATE_LIMIT_SECONDS)
+    capped_results = min(max_results, ARXIV_MAX_RESULTS)
     params = {
         "search_query": f"all:{query}",
         "start": 0,
-        "max_results": max_results,
+        "max_results": capped_results,
         "sortBy": "relevance",
         "sortOrder": "descending",
     }
     url = f"{ARXIV_API}?{urllib.parse.urlencode(params)}"
-    response = _fetch_with_arxiv_rate_limit(url)
-    response.raise_for_status()
+    arxiv_response = _fetch_with_arxiv_rate_limit(url)
+    arxiv_response.raise_for_status()
 
-    feed = feedparser.parse(response.text)
+    feed = feedparser.parse(arxiv_response.text)
     papers = []
     for entry in feed.entries:
         arxiv_id = entry.id.split("/abs/")[-1]
         published_str = entry.get("published", "")
         try:
             published_at = datetime.fromisoformat(published_str.replace("Z", "+00:00"))
-        except Exception:
-            published_at = datetime.utcnow()
+        except ValueError as exc:
+            logger.warning("arxiv_published_date_invalid", query=query, arxiv_id=arxiv_id, published=published_str, error=str(exc))
+            published_at = utc_now()
 
         abstract = entry.summary.replace("\n", " ").strip()
         papers.append({
             "arxiv_id": arxiv_id,
             "title": entry.title.replace("\n", " ").strip(),
             "authors": [a.name for a in entry.get("authors", [])][:3],
-            "abstract": abstract[:400] + ("…" if len(abstract) > 400 else ""),
+            "abstract": abstract[:ARXIV_ABSTRACT_MAX_CHARS] + ("…" if len(abstract) > ARXIV_ABSTRACT_MAX_CHARS else ""),
             "published_at": published_at.isoformat(),
             "url": f"https://arxiv.org/abs/{arxiv_id}",
         })
@@ -59,53 +67,47 @@ def search_arxiv(query: str, max_results: int = 5) -> dict:
 
 @http_retry
 def _fetch_with_arxiv_rate_limit(url: str) -> httpx.Response:
-    """Fetch arXiv URL with tenacity retry. arXiv 429 gets a 65s sleep before re-raising."""
-    response = httpx.get(url, timeout=30)
-    if response.status_code == 429:
+    arxiv_response = httpx.get(url, timeout=HTTP_TIMEOUT_SECONDS)
+    if arxiv_response.status_code == 429:
         logger.warning("arxiv_rate_limited", url=url)
-        time.sleep(65)
-        response.raise_for_status()
-    return response
+        time.sleep(ARXIV_BACKOFF_SECONDS)
+        arxiv_response.raise_for_status()
+    return arxiv_response
 
 
 def fetch_paper(arxiv_id: str) -> dict:
-    """
-    Fetch the readable text of an arXiv paper.
-    Tries ar5iv HTML first (clean text), falls back to abstract.
-    """
-    time.sleep(3)
+    time.sleep(ARXIV_RATE_LIMIT_SECONDS)
     html_url = ARXIV_HTML_URL.format(arxiv_id=arxiv_id)
     try:
-        resp = _fetch_html_with_retry(html_url)
-        final_url = str(resp.url)
+        html_response = _fetch_html_with_retry(html_url)
+        final_url = str(html_response.url)
         stayed_on_ar5iv = "ar5iv" in final_url
-        if resp.status_code == 200 and stayed_on_ar5iv and len(resp.text) > 5000:
-            text = _extract_text_from_html(resp.text)
-            if len(text) > 2000:
+        if html_response.status_code == 200 and stayed_on_ar5iv and len(html_response.text) > ARXIV_MIN_HTML_CHARS:
+            text = _extract_text_from_html(html_response.text)
+            if len(text) > ARXIV_MIN_EXTRACTED_TEXT_CHARS:
                 return {"arxiv_id": arxiv_id, "text": text, "source": "ar5iv"}
-    except Exception as exc:
+    except httpx.HTTPError as exc:
         logger.warning("ar5iv_fetch_failed", arxiv_id=arxiv_id, error=str(exc))
 
-    # Fallback: fetch abstract via arXiv API
     params = {"id_list": arxiv_id, "max_results": 1}
     url = f"{ARXIV_API}?{urllib.parse.urlencode(params)}"
     try:
-        resp = _fetch_with_arxiv_rate_limit(url)
-        resp.raise_for_status()
-        feed = feedparser.parse(resp.text)
+        abstract_response = _fetch_with_arxiv_rate_limit(url)
+        abstract_response.raise_for_status()
+        feed = feedparser.parse(abstract_response.text)
         if feed.entries:
             entry = feed.entries[0]
             text = f"Title: {entry.title}\n\nAbstract: {entry.summary}"
             return {"arxiv_id": arxiv_id, "text": text, "source": "abstract"}
-    except Exception as exc:
+    except httpx.HTTPError as exc:
         logger.warning("arxiv_abstract_fetch_failed", arxiv_id=arxiv_id, error=str(exc))
 
-    return {"arxiv_id": arxiv_id, "text": "", "source": "none", "error": "Could not fetch paper"}
+    raise ExternalServiceError(f"Could not fetch arXiv paper {arxiv_id}")
 
 
 @http_retry
 def _fetch_html_with_retry(url: str) -> httpx.Response:
-    return httpx.get(url, timeout=30, follow_redirects=True)
+    return httpx.get(url, timeout=HTTP_TIMEOUT_SECONDS, follow_redirects=True)
 
 
 def _extract_text_from_html(html: str) -> str:
@@ -114,12 +116,8 @@ def _extract_text_from_html(html: str) -> str:
     html = re.sub(r"<(p|div|h[1-6]|li|br)[^>]*>", "\n", html, flags=re.IGNORECASE)
     html = re.sub(r"<[^>]+>", "", html)
     lines = [line.strip() for line in html.splitlines() if line.strip()]
-    return "\n".join(lines)[:50_000]
+    return "\n".join(lines)[:EXTRACTED_TEXT_MAX_CHARS]
 
-
-# ---------------------------------------------------------------------------
-# Tool declarations (OpenAI function-calling format)
-# ---------------------------------------------------------------------------
 
 search_arxiv_tool = {
     "type": "function",

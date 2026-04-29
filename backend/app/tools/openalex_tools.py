@@ -1,15 +1,14 @@
-"""
-OpenAlex search tool.
-Fully open, no API key. Polite pool: include email in User-Agent.
-All HTTP calls use tenacity retry (1s→2s→4s, up to 3 retries).
-
-ID strategy:
-  - Papers with an arXiv preprint  → arxiv_id = arXiv ID
-  - Papers without arXiv (journals) → arxiv_id = DOI
-"""
 import httpx
 import structlog
 
+from app.constants import (
+    HTTP_TIMEOUT_SECONDS,
+    OPENALEX_ABSTRACT_MAX_CHARS,
+    OPENALEX_DEFAULT_MAX_RESULTS,
+    OPENALEX_DEFAULT_YEAR,
+    OPENALEX_MAX_RESULTS,
+)
+from app.exceptions import ExternalServiceError
 from app.resilience.retry import http_retry
 
 logger = structlog.get_logger(__name__)
@@ -19,68 +18,67 @@ _SELECT = "id,title,abstract_inverted_index,authorships,publication_year,ids,cit
 _HEADERS = {"User-Agent": "mailto:researchpulse@example.com"}
 
 
-def _reconstruct_abstract(inverted: dict) -> str:
-    if not inverted:
+def _reconstruct_abstract(inverted_index: dict) -> str:
+    if not inverted_index:
         return ""
-    pos_map: dict[int, str] = {}
-    for word, positions in inverted.items():
-        for pos in positions:
-            pos_map[pos] = word
-    return " ".join(pos_map[i] for i in sorted(pos_map))
+    words_by_position: dict[int, str] = {}
+    for word, positions in inverted_index.items():
+        for position in positions:
+            words_by_position[position] = word
+    return " ".join(words_by_position[position] for position in sorted(words_by_position))
 
 
-def search_openalex(query: str, max_results: int = 8) -> dict:
-    """Search OpenAlex. Returns arXiv papers with arXiv IDs and non-arXiv papers with DOIs."""
+def search_openalex(query: str, max_results: int = OPENALEX_DEFAULT_MAX_RESULTS) -> dict:
     params = {
         "search": query,
-        "per-page": min(max_results * 2, 50),
+        "per-page": min(max_results * 2, OPENALEX_MAX_RESULTS),
         "filter": "has_abstract:true",
         "select": _SELECT,
     }
     try:
-        response = _openalex_request(params)
-        response.raise_for_status()
+        openalex_response = _openalex_request(params)
+        openalex_response.raise_for_status()
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code == 429:
             logger.warning("openalex_rate_limited", query=query)
-            return {"papers": [], "total_found": 0, "error": "rate_limited"}
+            raise ExternalServiceError("OpenAlex rate limit exceeded") from exc
         raise
-    except Exception as exc:
+    except httpx.HTTPError as exc:
         logger.warning("openalex_request_failed", query=query, error=str(exc))
-        return {"papers": [], "total_found": 0, "error": str(exc)}
+        raise ExternalServiceError(f"OpenAlex request failed for query {query}") from exc
 
-    data = response.json()
+    payload = openalex_response.json()
     papers = []
-    for item in data.get("results", []):
-        ids = item.get("ids") or {}
+    for work in payload.get("results", []):
+        identifiers = work.get("ids") or {}
 
-        raw_arxiv = ids.get("arxiv", "")
+        raw_arxiv = identifiers.get("arxiv", "")
         arxiv_id = raw_arxiv.replace("https://arxiv.org/abs/", "").strip("/")
 
         if arxiv_id:
             source_url = f"https://arxiv.org/abs/{arxiv_id}"
         else:
-            doi = (item.get("doi") or ids.get("doi", "")).lstrip("https://doi.org/")
+            doi = (work.get("doi") or identifiers.get("doi", "")).lstrip("https://doi.org/")
             if not doi:
                 continue
             arxiv_id = doi
             source_url = f"https://doi.org/{doi}"
 
-        abstract = _reconstruct_abstract(item.get("abstract_inverted_index") or {})
+        abstract = _reconstruct_abstract(work.get("abstract_inverted_index") or {})
         authors = [
-            (a.get("author") or {}).get("display_name", "")
-            for a in (item.get("authorships") or [])
+            (authorship.get("author") or {}).get("display_name", "")
+            for authorship in (work.get("authorships") or [])
         ][:3]
-        year = item.get("publication_year") or 2000
+        year = work.get("publication_year") or OPENALEX_DEFAULT_YEAR
 
         papers.append({
             "arxiv_id": arxiv_id,
-            "title": (item.get("title") or "").replace("\n", " ").strip(),
+            "title": (work.get("title") or "").replace("\n", " ").strip(),
             "authors": authors,
-            "abstract": abstract[:400] + ("…" if len(abstract) > 400 else ""),
+            "abstract": abstract[:OPENALEX_ABSTRACT_MAX_CHARS] + ("…" if len(abstract) > OPENALEX_ABSTRACT_MAX_CHARS else ""),
             "published_at": f"{year}-01-01T00:00:00",
             "url": source_url,
-            "citation_count": item.get("cited_by_count") or 0,
+            "citation_count": work.get("cited_by_count") or 0,
             "source": "openalex",
         })
         if len(papers) >= max_results:
@@ -91,4 +89,4 @@ def search_openalex(query: str, max_results: int = 8) -> dict:
 
 @http_retry
 def _openalex_request(params: dict) -> httpx.Response:
-    return httpx.get(OA_SEARCH_URL, params=params, headers=_HEADERS, timeout=20)
+    return httpx.get(OA_SEARCH_URL, params=params, headers=_HEADERS, timeout=HTTP_TIMEOUT_SECONDS)

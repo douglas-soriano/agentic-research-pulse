@@ -1,15 +1,5 @@
-"""
-Orchestrator — coordinates SearchAgent → PaperService (ingest) →
-ExtractAgent → SynthesisAgent → ReviewService.
-
-Also drives the task lifecycle SSE stream:
-  queued  (published by ResearchPipeline before enqueue)
-  started (published here at the top of run())
-  done / failed (published here at completion)
-"""
 import re
 import time
-from datetime import datetime
 
 import structlog
 
@@ -18,13 +8,13 @@ from app.agents.search_agent import SearchAgent
 from app.agents.extract_agent import ExtractAgent
 from app.agents.synthesis_agent import SynthesisAgent
 from app.config import settings
-from app.database import get_session, TopicRow
 from app.models.claim import Claim
 from app.models.review import ReviewCreate
 from app.observability.langsmith import agent_trace
 from app.services.paper_service import PaperService
 from app.services.review_service import ReviewService
 from app.services.stream_service import stream_service
+from app.services.topic_service import TopicService
 from app.services.trace_service import TraceService
 
 logger = structlog.get_logger(__name__)
@@ -36,22 +26,7 @@ class Orchestrator:
         self.trace = TraceService()
         self.paper_service = PaperService()
         self.review_service = ReviewService()
-
-    def _mark_topic_fetched(self, topic_id: str) -> None:
-        try:
-            with get_session() as session:
-                topic = session.query(TopicRow).filter_by(id=topic_id).first()
-                if topic:
-                    topic.last_fetched_at = datetime.utcnow()
-                    session.commit()
-        except Exception as exc:
-            logger.warning(
-                "mark_topic_fetched_failed",
-                topic_id=topic_id,
-                error=str(exc),
-                agent="orchestrator",
-                job_id=self.job_id,
-            )
+        self.topic_service = TopicService()
 
     @staticmethod
     def _papers_are_relevant(topic: str, papers_meta: list[dict]) -> bool:
@@ -110,7 +85,7 @@ class Orchestrator:
                 init_llm_log(topic_name, self.job_id)
                 budget = LLMCallBudget(settings.max_llm_calls_per_job)
 
-                # Phase 1: Search
+
                 with agent_trace("search_phase", run_type="chain", job_id=self.job_id, topic=topic_name):
                     search_agent = SearchAgent(self.job_id, budget=budget)
                     papers_meta = search_agent.run(topic_name, max_papers=max_papers)
@@ -146,7 +121,7 @@ class Orchestrator:
                             citations_rejected=0,
                         )
                     )
-                    self._mark_topic_fetched(topic_id)
+                    self.topic_service.mark_fetched(topic_id)
                     total_ms = int((time.monotonic() - start_wall) * 1000)
                     stats = {
                         "total_duration_ms": total_ms,
@@ -159,7 +134,7 @@ class Orchestrator:
                     stream_service.task_done(self.job_id, review_id=review.id, stats=stats)
                     return {"review_id": review.id, **stats}
 
-                # Phase 2: Ingest
+
                 papers = []
                 with agent_trace("ingest_phase", run_type="chain", job_id=self.job_id, papers_count=len(papers_meta)):
                     for meta in papers_meta:
@@ -193,7 +168,7 @@ class Orchestrator:
                             citations_verified=0, citations_rejected=0,
                         )
                     )
-                    self._mark_topic_fetched(topic_id)
+                    self.topic_service.mark_fetched(topic_id)
                     total_ms = int((time.monotonic() - start_wall) * 1000)
                     stats = {
                         "total_duration_ms": total_ms,
@@ -208,7 +183,7 @@ class Orchestrator:
 
                 papers = embedded
 
-                # Phase 3: Extract claims
+
                 with agent_trace("extract_phase", run_type="chain", job_id=self.job_id, papers_count=len(papers)):
                     extract_agent = ExtractAgent(self.job_id, budget=budget)
                     all_claims: list[Claim] = []
@@ -218,7 +193,7 @@ class Orchestrator:
                         claims = extract_agent.run(paper)
                         all_claims.extend(claims)
 
-                # Phase 4: Synthesise
+
                 synthesis_result = {
                     "synthesis": (
                         "No claims could be extracted from the retrieved papers. "
@@ -235,7 +210,7 @@ class Orchestrator:
                         synth_agent = SynthesisAgent(self.job_id, budget=budget)
                         synthesis_result = synth_agent.run(topic_name, all_claims, papers)
 
-                # Phase 5: Persist review
+
                 review = self.review_service.save(
                     ReviewCreate(
                         topic_id=topic_id,
@@ -258,7 +233,7 @@ class Orchestrator:
                     "citations_verified": synthesis_result["citations_verified"],
                     "citations_rejected": synthesis_result["citations_rejected"],
                 }
-                self._mark_topic_fetched(topic_id)
+                self.topic_service.mark_fetched(topic_id)
                 self.trace.complete(self.job_id, stats)
                 stream_service.task_done(self.job_id, review_id=review.id, stats=stats)
 

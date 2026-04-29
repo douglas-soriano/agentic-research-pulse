@@ -1,14 +1,7 @@
-"""
-Synthesis tool definitions — claim extraction and citation verification.
-"""
 from app.tools.vector_tools import verify_chunk_exists
 
 
 def extract_claims(paper_id: str, chunks: list[dict]) -> dict:
-    """
-    Validate and normalise extracted claims.
-    The LLM drives extraction; this validates the output format.
-    """
     validated = []
     for chunk in chunks:
         if not chunk.get("chunk_id") or not chunk.get("text"):
@@ -24,10 +17,6 @@ def extract_claims(paper_id: str, chunks: list[dict]) -> dict:
 
 
 def verify_citation(chunk_id: str, paper_id: str) -> dict:
-    """
-    Verify a citation is grounded — chunk must exist in vector DB
-    AND belong to the claimed paper.
-    """
     result = verify_chunk_exists(chunk_id)
     if not result["exists"]:
         return {"verified": False, "chunk_id": chunk_id, "reason": "chunk not found in vector DB"}
@@ -42,10 +31,6 @@ def verify_citation(chunk_id: str, paper_id: str) -> dict:
 
     return {"verified": True, "chunk_id": chunk_id, "paper_id": paper_id}
 
-
-# ---------------------------------------------------------------------------
-# Tool declarations (OpenAI function-calling format)
-# ---------------------------------------------------------------------------
 
 extract_claims_tool = {
     "type": "function",

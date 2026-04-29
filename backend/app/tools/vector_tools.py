@@ -1,16 +1,12 @@
-"""
-Vector DB tool definitions — ChromaDB store/search.
-"""
 import threading
 
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 
 from app.config import settings as app_settings
+from app.exceptions import DataStoreError
 
-# Module-level singleton — one ChromaDB connection per worker process.
-# Avoids 4 handshake HTTP requests (auth/identity, tenants, databases, collection)
-# on every single tool call.
+
 _lock = threading.Lock()
 _collection: chromadb.Collection | None = None
 
@@ -33,10 +29,6 @@ def _get_collection() -> chromadb.Collection:
 
 
 def store_chunks(chunks: list[dict]) -> dict:
-    """
-    Store text chunks with embeddings in ChromaDB.
-    Each chunk must have: chunk_id, paper_id, text, metadata (dict).
-    """
     if not chunks:
         return {"stored": 0}
 
@@ -54,10 +46,6 @@ def store_chunks(chunks: list[dict]) -> dict:
 
 
 def semantic_search(query: str = "", paper_ids: list[str] | None = None, n_results: int = 10) -> dict:
-    """
-    Semantic search over stored chunks.
-    Returns chunks with chunk_id, text, paper_id, and distance.
-    """
     if not query:
         return {
             "chunks": [],
@@ -92,34 +80,25 @@ def semantic_search(query: str = "", paper_ids: list[str] | None = None, n_resul
 
 
 def paper_has_chunks(arxiv_id: str) -> bool:
-    """
-    Return True if ChromaDB already contains at least one chunk for this arxiv_id.
-    Used as an idempotency check before embedding to avoid duplicating work.
-    """
     try:
         collection = _get_collection()
-        result = collection.get(
+        stored_chunks = collection.get(
             where={"arxiv_id": arxiv_id},
             limit=1,
             include=[],
         )
-        return bool(result["ids"])
-    except Exception:
-        return False
+        return bool(stored_chunks["ids"])
+    except Exception as exc:
+        raise DataStoreError(f"Could not check stored chunks for {arxiv_id}") from exc
 
 
 def verify_chunk_exists(chunk_id: str) -> dict:
-    """Check whether a chunk_id exists in the vector DB (for citation grounding)."""
     collection = _get_collection()
-    result = collection.get(ids=[chunk_id], include=["metadatas"])
-    exists = bool(result["ids"])
-    metadata = result["metadatas"][0] if exists else {}
+    stored_chunk = collection.get(ids=[chunk_id], include=["metadatas"])
+    exists = bool(stored_chunk["ids"])
+    metadata = stored_chunk["metadatas"][0] if exists else {}
     return {"exists": exists, "chunk_id": chunk_id, "metadata": metadata}
 
-
-# ---------------------------------------------------------------------------
-# Tool declarations (OpenAI function-calling format)
-# ---------------------------------------------------------------------------
 
 store_chunks_tool = {
     "type": "function",

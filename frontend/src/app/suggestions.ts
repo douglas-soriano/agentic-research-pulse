@@ -21,7 +21,7 @@ export const SUGGESTIONS: string[] = [
   "Speech synthesis and voice cloning with neural networks",
 ];
 
-/** Return n unique suggestions sampled uniformly at random. */
+
 export function pickSuggestions(n: number): string[] {
   const shuffled = [...SUGGESTIONS].sort(() => Math.random() - 0.5);
   return shuffled.slice(0, n);

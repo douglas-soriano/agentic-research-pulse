@@ -21,7 +21,7 @@ const C = {
   danger:      "#e45b5b",
 } as const;
 
-// ── Types ──────────────────────────────────────────────────────────────────
+
 interface TaskEvent {
   event: "queued" | "started" | "done" | "failed";
   job_id: string;
@@ -70,7 +70,7 @@ interface Review {
   version: number; updated_at: string;
 }
 
-// ── Pipeline labels ────────────────────────────────────────────────────────
+
 const TOOL_LABEL: Record<string, string> = {
   plan_queries:    "Planning search strategy",
   arxiv_search:    "Searching arXiv",
@@ -101,7 +101,7 @@ const TOOL_SEQUENCE = [
   "verify_citations", "synthesize",
 ];
 
-/** Pretty labels for provider names stored in trace steps */
+
 const PROVIDER_DISPLAY: Record<string, string> = {
   gemini: "Gemini",
   chatgpt: "ChatGPT",
@@ -155,7 +155,7 @@ function nestedItems(step: TraceStep): string[] {
 
 type StepStatus = "done" | "running" | "failed" | "pending";
 
-/** When `phase_tool` is absent on older traces, infer the pipeline step from the agent. */
+
 const AGENT_TO_PHASE_TOOL: Record<string, string> = {
   search_agent: "plan_queries",
   extract_agent: "extract_claims",
@@ -174,7 +174,7 @@ interface ProviderFallbackSummary {
   count: number;
 }
 
-/** One line per distinct from→to per phase; count merges repeated switches (e.g. per-paper LLM calls). */
+
 function providerFallbacksForPhase(
   allSteps: TraceStep[],
   toolId: string,
@@ -208,15 +208,14 @@ function buildWorkflow(steps: TraceStep[], isLive: boolean): WorkflowItem[] {
     (byTool[s.tool] ??= []).push(s);
   }
 
-  // Index of the latest tool seen in steps
+
   let lastIdx = -1;
   for (const s of steps) {
     const i = TOOL_SEQUENCE.indexOf(s.tool ?? "");
     if (i > lastIdx) lastIdx = i;
   }
 
-  // Is the frontmost tool still accumulating (has steps, but no later tool has started yet)?
-  // If so, don't mark the *next* tool as "running" — it hasn't started yet.
+
   const frontToolIsAccumulating =
     lastIdx >= 0 &&
     isLive &&
@@ -229,7 +228,7 @@ function buildWorkflow(steps: TraceStep[], isLive: boolean): WorkflowItem[] {
     const hasFail  = ts.some(s => !s.success);
     const totalMs  = ts.reduce((a, s) => a + s.duration_ms, 0);
 
-    // A later stage has already produced steps → this one is truly finished
+
     const hasLaterStarted = steps.some(
       s => TOOL_SEQUENCE.indexOf(s.tool ?? "") > toolIdx
     );
@@ -238,14 +237,14 @@ function buildWorkflow(steps: TraceStep[], isLive: boolean): WorkflowItem[] {
     if (hasFail) {
       status = "failed";
     } else if (hasDone && (!isLive || hasLaterStarted)) {
-      // Done: pipeline finished, or a confirmed-later step proves we moved on
+
       status = "done";
     } else if (hasDone && isLive && !hasLaterStarted) {
-      // Still live, no later step yet → still accumulating (per-paper tools)
+
       status = "running";
     } else if (
       isLive &&
-      !frontToolIsAccumulating &&        // ← key fix: don't pre-run next while front is busy
+      !frontToolIsAccumulating &&
       (tool === TOOL_SEQUENCE[lastIdx + 1] || (steps.length === 0 && tool === "plan_queries"))
     ) {
       status = "running";
@@ -268,7 +267,7 @@ function buildWorkflow(steps: TraceStep[], isLive: boolean): WorkflowItem[] {
   });
 }
 
-// ── Step dot ───────────────────────────────────────────────────────────────
+
 function StepDot({ status }: { status: StepStatus }) {
   if (status === "running") return (
     <div style={{ width: 20, height: 20, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -285,7 +284,7 @@ function StepDot({ status }: { status: StepStatus }) {
   return <div style={{ ...base, border: "1.5px dashed rgba(0,0,0,0.2)" }} />;
 }
 
-// ── Workflow timeline item ─────────────────────────────────────────────────
+
 function TimelineItem({ item, isLast }: { item: WorkflowItem; isLast: boolean }) {
   const [open, setOpen] = useState(false);
   const isPending = item.status === "pending";
@@ -294,13 +293,13 @@ function TimelineItem({ item, isLast }: { item: WorkflowItem; isLast: boolean })
 
   return (
     <div className="step-enter" style={{ display: "flex", gap: "0.625rem" }}>
-      {/* Dot + line */}
+      {}
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 2, flexShrink: 0 }}>
         <StepDot status={item.status} />
         {!isLast && <div style={{ width: 1.5, flex: 1, minHeight: 18, background: isDone ? "rgba(0,0,0,0.1)" : "rgba(0,0,0,0.05)", margin: "3px 0" }} />}
       </div>
 
-      {/* Content */}
+      {}
       <div style={{ flex: 1, paddingBottom: isLast ? 0 : "1rem" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
           <span style={{ fontWeight: 600, fontSize: "0.875rem", color: isPending ? C.textMut : C.text }}>
@@ -379,7 +378,7 @@ function TimelineItem({ item, isLast }: { item: WorkflowItem; isLast: boolean })
           </ul>
         )}
 
-        {/* Generated queries as sub-bullets */}
+        {}
         {isDone && item.nested.length > 0 && (
           <ul style={{ margin: "0.35rem 0 0", padding: "0 0 0 0.875rem", listStyle: "none" }}>
             {item.nested.map((n, i) => (
@@ -390,7 +389,7 @@ function TimelineItem({ item, isLast }: { item: WorkflowItem; isLast: boolean })
           </ul>
         )}
 
-        {/* Running pill */}
+        {}
         {isRunning && (
           <div style={{
             display: "inline-flex", alignItems: "center", gap: "0.35rem",
@@ -403,7 +402,7 @@ function TimelineItem({ item, isLast }: { item: WorkflowItem; isLast: boolean })
           </div>
         )}
 
-        {/* Technical details expand */}
+        {}
         {open && (
           <div className="slide-down" style={{
             marginTop: "0.5rem", padding: "0.75rem",
@@ -440,7 +439,7 @@ function TimelineItem({ item, isLast }: { item: WorkflowItem; isLast: boolean })
   );
 }
 
-// ── Citation badge ─────────────────────────────────────────────────────────
+
 function CitationBadge({ token, entry }: { token: string; entry: CitationEntry | undefined }) {
   const [hover, setHover] = useState(false);
   if (!entry) return <sup style={{ color: C.danger, fontSize: "0.63rem" }}>[?]</sup>;
@@ -497,7 +496,7 @@ function SynthesisText({ text, citations }: { text: string; citations: Record<st
   );
 }
 
-// ── Subtle timestamp tooltip ───────────────────────────────────────────────
+
 function TimestampHover({ date, children, align = "right", block = false }: {
   date: Date;
   children: React.ReactNode;
@@ -536,7 +535,7 @@ function TimestampHover({ date, children, align = "right", block = false }: {
   );
 }
 
-// ── Animated waiting dots ──────────────────────────────────────────────────
+
 function WaitingDots() {
   return (
     <span style={{ display: "inline-flex", gap: "3px", alignItems: "center", marginTop: "0.75rem" }}>
@@ -556,12 +555,12 @@ function WaitingDots() {
   );
 }
 
-// ── Synthesis block ────────────────────────────────────────────────────────
+
 function SynthesisBlock({ review }: { review: Review }) {
   const hasContent = review.synthesis && review.synthesis.trim().length > 0;
   return (
     <div className="fade-in">
-        {/* Synthesis text */}
+        {}
         <div style={{
           background: C.surface,
           border: `1px solid ${C.border}`,
@@ -584,7 +583,7 @@ function SynthesisBlock({ review }: { review: Review }) {
           </p>
         </div>
 
-        {/* Sources */}
+        {}
         {review.cited_papers.length > 0 && (
           <div>
             <p style={{ margin: "0 0 0.5rem", fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: C.textMut }}>
@@ -632,13 +631,13 @@ function SynthesisBlock({ review }: { review: Review }) {
   );
 }
 
-// ── Inner page (needs useSearchParams → must be inside Suspense) ───────────
+
 function ResearchPageInner({ topicId }: { topicId: string }) {
   const searchParams   = useSearchParams();
   const jobId          = searchParams.get("job");
   const nameParam      = searchParams.get("name");
 
-  // topicName: seeded from URL param immediately (no flash of ID)
+
   const [topicName,      setTopicName]      = useState(nameParam ? decodeURIComponent(nameParam) : "");
   const [pipelineStatus, setPipelineStatus] = useState<string>(jobId ? "connecting" : "done");
   const [steps,          setSteps]          = useState<TraceStep[]>([]);
@@ -650,7 +649,7 @@ function ResearchPageInner({ topicId }: { topicId: string }) {
   const startRef      = useRef<number | null>(null);
   const autoCollapsed = useRef(false);
 
-  // ── Poll for review ──────────────────────────────────────────────────────
+
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -665,7 +664,7 @@ function ResearchPageInner({ topicId }: { topicId: string }) {
     return () => { cancelled = true; clearInterval(interval); };
   }, [topicId]);
 
-  // ── SSE connections (only when job is live) ───────────────────────────────
+
   useEffect(() => {
     if (!jobId) return;
 
@@ -682,7 +681,7 @@ function ResearchPageInner({ topicId }: { topicId: string }) {
           setTimeout(() => setReasoningOpen(false), 1500);
           taskEs.close();
         }
-      } catch { /* ignore */ }
+      } catch {  }
     };
     taskEs.onerror = () => setPipelineStatus(s => s === "connecting" ? "error" : s);
 
@@ -692,13 +691,13 @@ function ResearchPageInner({ topicId }: { topicId: string }) {
         const ev = JSON.parse(e.data);
         if (ev.event === "step") setSteps(prev => [...prev, ev as TraceStep]);
         if (ev.event === "done" || ev.event === "failed") traceEs.close();
-      } catch { /* ignore */ }
+      } catch {  }
     };
 
     return () => { taskEs.close(); traceEs.close(); };
   }, [jobId]);
 
-  // ── Elapsed timer ─────────────────────────────────────────────────────────
+
   useEffect(() => {
     if (pipelineStatus !== "started") return;
     const t = setInterval(() => {
@@ -714,7 +713,7 @@ function ResearchPageInner({ topicId }: { topicId: string }) {
   const workflow    = buildWorkflow(steps, isLive);
   const currentItem = workflow.find(w => w.status === "running");
 
-  // One-liner for the reasoning header
+
   const reasoningOneLiner = (() => {
     if (isFailed) return taskEvent?.error ?? "Pipeline failed";
     if (isLive)   return currentItem?.label ?? (pipelineStatus === "queued" ? "Waiting for a worker…" : "Starting…");
@@ -735,19 +734,17 @@ function ResearchPageInner({ topicId }: { topicId: string }) {
 
   return (
     <main>
-      {/* Back nav */}
+      {}
       <Link href="/" style={{ color: C.textMut, fontSize: "0.78rem", textDecoration: "none", display: "inline-block", marginBottom: "1.5rem" }}>
         ← New research
       </Link>
 
-      {/*
-        Layout contract:
-        - Avatar is 28px wide, gap is 0.75rem → content column starts at calc(28px + 0.75rem)
-        - User bubble row uses the same left padding so its right edge = content column right edge
-        - All cards (reasoning, synthesis, sources) naturally share the same width inside the column
-      */}
+      {
 
-      {/* ── User bubble — offset left by avatar+gap so right edges align ── */}
+
+}
+
+      {}
       <div style={{
         display: "flex", justifyContent: "flex-end",
         marginBottom: "1.25rem",
@@ -765,9 +762,9 @@ function ResearchPageInner({ topicId }: { topicId: string }) {
         </div>
       </div>
 
-      {/* ── AI response area ──────────────────────────────────────────── */}
+      {}
       <div style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start" }}>
-        {/* RP avatar */}
+        {}
         <div style={{
           width: 28, height: 28, borderRadius: 8, flexShrink: 0, marginTop: 2,
           background: "linear-gradient(135deg, #ff6b00, #ff9f0a)",
@@ -777,10 +774,10 @@ function ResearchPageInner({ topicId }: { topicId: string }) {
           RP
         </div>
 
-        {/* Content column — reasoning + synthesis + sources all same width */}
+        {}
         <div style={{ flex: 1, minWidth: 0 }}>
 
-          {/* ── Reasoning card ────────────────────────────────────────── */}
+          {}
           <div style={{
             background: C.surface,
             border: `1px solid ${C.border}`,
@@ -789,7 +786,7 @@ function ResearchPageInner({ topicId }: { topicId: string }) {
             marginBottom: review ? "1rem" : 0,
             boxShadow: "0 2px 12px rgba(0,0,0,0.04)",
           }}>
-            {/* Header — always visible, clickable */}
+            {}
             <button
               onClick={() => setReasoningOpen(o => !o)}
               style={{
@@ -827,7 +824,7 @@ function ResearchPageInner({ topicId }: { topicId: string }) {
               </span>
             </button>
 
-            {/* Expanded workflow timeline */}
+            {}
             {reasoningOpen && (
               <div className="slide-down" style={{
                 padding: "0.25rem 1rem 1rem",
@@ -848,15 +845,15 @@ function ResearchPageInner({ topicId }: { topicId: string }) {
             )}
           </div>
 
-          {/* ── Synthesis ─────────────────────────────────────────────── */}
+          {}
           {review && <SynthesisBlock review={review} />}
 
-          {/* ── Waiting for synthesis (live, no review yet) ───────────── */}
+          {}
           {isLive && !review && (
             <WaitingDots />
           )}
 
-          {/* ── Failed state (no review) ──────────────────────────────── */}
+          {}
           {isFailed && !review && (
             <div className="fade-in" style={{
               padding: "0.875rem 1rem",
@@ -874,7 +871,7 @@ function ResearchPageInner({ topicId }: { topicId: string }) {
   );
 }
 
-// ── Page export (Suspense boundary for useSearchParams) ────────────────────
+
 export default function ResearchPage({ params }: { params: { topicId: string } }) {
   return (
     <Suspense fallback={

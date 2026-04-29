@@ -1,13 +1,3 @@
-"""
-Shared fixtures for unit and integration tests.
-
-ChromaDB isolation: each test that requests `chroma_collection` gets a fresh
-in-memory EphemeralClient — the module-level singleton in vector_tools is patched
-for the duration of the test and restored to None afterwards.
-
-Database isolation: each test that requests `test_db` gets a fresh in-memory
-SQLite engine; the module-level engine in app.database is replaced and restored.
-"""
 import uuid
 from datetime import datetime
 from unittest.mock import patch
@@ -22,13 +12,8 @@ import app.database as db_module
 from app.database import Base, init_db
 
 
-# ---------------------------------------------------------------------------
-# ChromaDB fixture
-# ---------------------------------------------------------------------------
-
 @pytest.fixture
 def chroma_collection():
-    """Ephemeral in-memory ChromaDB collection, isolated per test."""
     client = chromadb.EphemeralClient()
     collection = client.get_or_create_collection(
         name="paper_chunks",
@@ -38,16 +23,8 @@ def chroma_collection():
         yield collection
 
 
-# ---------------------------------------------------------------------------
-# SQLite in-memory database fixture
-# ---------------------------------------------------------------------------
-
 @pytest.fixture
 def test_db():
-    """
-    Replace the module-level SQLAlchemy engine with an in-memory SQLite instance
-    and create all tables. Restored after the test.
-    """
     test_engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -62,10 +39,6 @@ def test_db():
         db_module.engine = original_engine
         test_engine.dispose()
 
-
-# ---------------------------------------------------------------------------
-# Reusable sample data
-# ---------------------------------------------------------------------------
 
 @pytest.fixture
 def sample_paper_meta():

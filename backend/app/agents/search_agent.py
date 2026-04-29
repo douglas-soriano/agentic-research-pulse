@@ -1,23 +1,8 @@
-"""
-SearchAgent — finds relevant papers for a topic across multiple providers.
-
-Architecture (three-phase, no LLM tool loop):
-  Phase 1 — Query planning (1 LLM call):
-    The model receives the topic and returns 3 diverse search queries.
-
-  Phase 2 — Multi-provider search (0 LLM calls):
-    Queries run in parallel within each provider.
-    Providers run sequentially: arXiv → OpenAlex.
-
-  Phase 3 — Relevance ranking (0 LLM calls):
-    All candidates are merged, deduplicated by arXiv ID, and scored.
-"""
 import math
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable
-
 
 
 import structlog
@@ -53,12 +38,10 @@ CRITICAL RULES — violating any of these will cause the search to fail:
 
 _FETCH_PER_QUERY = 8
 
-# Hard cap on unique search queries sent to each provider.
-# Prevents runaway loop and keeps API costs predictable.
+
 _MAX_QUERIES = 3
 
-# Quality threshold: if we have at least this many unique papers from the
-# first provider, skip the remaining providers entirely.
+
 _QUALITY_THRESHOLD_PAPERS = 3
 
 _PROVIDERS: list[tuple[Callable, str, str]] = [
@@ -80,14 +63,14 @@ class SearchAgent(BaseAgent):
         bound_log = logger.bind(job_id=self.job_id, agent_name=self.agent_name)
 
         with agent_trace("search_agent", run_type="chain", job_id=self.job_id, topic=topic):
-            # Phase 1: query planning — cap at _MAX_QUERIES total
+
             t0 = time.monotonic()
             llm_queries = self._plan_queries(topic)
 
             raw_queries: list[str] = [topic] + [
                 q for q in llm_queries if q.lower() != topic.lower()
             ]
-            # Hard cap: never send more than _MAX_QUERIES to any provider.
+
             queries = raw_queries[:_MAX_QUERIES]
 
             self.trace.record_step(
@@ -101,9 +84,7 @@ class SearchAgent(BaseAgent):
             )
             bound_log.info("queries_planned", queries=queries, query_count=len(queries), step="plan_queries")
 
-            # Phase 2: sequential provider search with quality-based early exit.
-            # Providers are tried in order; if the first provider already yields
-            # enough unique papers we skip the rest entirely.
+
             all_candidates: list[dict] = []
             provider_counts: dict[str, int] = {}
 
@@ -137,7 +118,7 @@ class SearchAgent(BaseAgent):
                     step=tool_name,
                 )
 
-                # Quality-based early exit: enough unique papers found → stop.
+
                 unique_so_far = len({
                     re.sub(r'v\d+$', '', p.get("arxiv_id", ""))
                     for p in all_candidates if p.get("arxiv_id")
@@ -151,7 +132,7 @@ class SearchAgent(BaseAgent):
                     )
                     break
 
-            # Phase 3: dedup + relevance ranking
+
             t2 = time.monotonic()
             unique_ids = len({
                 re.sub(r'v\d+$', '', p.get("arxiv_id", ""))
@@ -206,9 +187,6 @@ class SearchAgent(BaseAgent):
 
             return selected
 
-    # ------------------------------------------------------------------
-    # Phase 1 — query planning
-    # ------------------------------------------------------------------
 
     def _plan_queries(self, topic: str) -> list[str]:
         try:
@@ -233,9 +211,6 @@ class SearchAgent(BaseAgent):
             )
             return [topic]
 
-    # ------------------------------------------------------------------
-    # Phase 2 — per-provider parallel search
-    # ------------------------------------------------------------------
 
     def _search_provider_queries(
         self,
@@ -272,9 +247,6 @@ class SearchAgent(BaseAgent):
 
         return all_papers, per_query
 
-    # ------------------------------------------------------------------
-    # Phase 3 — relevance ranking
-    # ------------------------------------------------------------------
 
     def _rank_and_select(self, candidates: list[dict], limit: int) -> list[dict]:
         seen: dict[str, dict] = {}

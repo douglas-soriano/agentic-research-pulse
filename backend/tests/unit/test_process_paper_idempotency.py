@@ -1,9 +1,3 @@
-"""
-Idempotency tests for process_paper_job / PaperService.ingest().
-
-Calling ingest() twice for the same arxiv_id must produce the same number of
-chunks in ChromaDB — no duplicate embedding on re-runs or retries.
-"""
 from unittest.mock import patch
 
 import pytest
@@ -47,7 +41,7 @@ def test_ingest_twice_fetch_called_only_once(mock_fetch_paper, mock_sleep, chrom
     service.ingest(sample_paper_meta, sample_topic_id)
     service.ingest(sample_paper_meta, sample_topic_id)
 
-    # fetch_paper is a network call — must not be called a second time
+
     assert mock_fetch_paper.call_count == 1
 
 

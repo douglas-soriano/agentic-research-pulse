@@ -1,7 +1,3 @@
-"""
-Unit tests for extract_claims.
-No external dependencies — purely deterministic validation logic.
-"""
 import pytest
 
 from app.tools.synthesis_tools import extract_claims

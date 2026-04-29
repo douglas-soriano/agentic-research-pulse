@@ -1,13 +1,3 @@
-"""
-SynthesisAgent — synthesizes a living review from verified claims.
-
-Citation format:
-  Inline tokens:  [citation_0001], [citation_0002], …
-  Returned map:   {"0001": {paper_id, arxiv_id, title, authors, chunk_id}, …}
-
-Claims are pre-verified in Python before the LLM sees them, so the model
-only needs to write text — no tool calls required during synthesis.
-"""
 import json
 import re
 import time
@@ -69,7 +59,7 @@ class SynthesisAgent(BaseAgent):
             topic=topic,
             claims_count=len(claims),
         ):
-            # Pre-verify claims programmatically
+
             t0 = time.monotonic()
             verified_items: list[dict] = []
             rejected_count = 0
@@ -102,7 +92,7 @@ class SynthesisAgent(BaseAgent):
                 step="verify_citations",
             )
 
-            # Build citation map
+
             citations: dict[str, dict] = {}
             for item in verified_items:
                 paper = item["paper"]
@@ -184,7 +174,7 @@ class SynthesisAgent(BaseAgent):
                 "synthesis": synthesis,
                 "citations": used_citations,
                 "cited_papers": cited_papers,
-                "citations_verified": len(used_citations),
+                "citations_verified": len(verified_items),
                 "citations_rejected": rejected_count,
             }
 

@@ -1,13 +1,3 @@
-"""
-End-to-end integration test for the full ResearchPulse pipeline.
-
-Runs Orchestrator.run() with topic "retrieval augmented generation" against:
-  - Ephemeral in-memory ChromaDB (isolated, no persistence)
-  - In-memory SQLite database
-  - Real LLM API (Gemini) and real arXiv HTTP calls
-
-Skipped automatically when GEMINI_API_KEY is not set.
-"""
 import os
 import re
 import uuid
@@ -37,8 +27,8 @@ def test_full_pipeline_end_to_end(chroma_collection, test_db):
 
     topic_id = str(uuid.uuid4())
     with get_session() as session:
-        from datetime import datetime
-        topic = TopicRow(id=topic_id, name=TOPIC, created_at=datetime.utcnow())
+        from app.utils.time import utc_now
+        topic = TopicRow(id=topic_id, name=TOPIC, created_at=utc_now())
         session.add(topic)
         session.commit()
 
@@ -47,14 +37,13 @@ def test_full_pipeline_end_to_end(chroma_collection, test_db):
     from app.config import settings
     from unittest.mock import patch, MagicMock
 
-    # Restrict to Gemini only — local Ollama is not available outside Docker.
-    # Patch at the class level so Pydantic's __setattr__ guard is bypassed.
+
     gemini_only = [settings.get_provider_chain()[0]]
 
     mock_stream = MagicMock()
-    with patch("app.agents.orchestrator.stream_service", mock_stream), \
-         patch("app.agents.orchestrator.agent_trace") as mock_trace, \
-         patch("app.agents.orchestrator.init_llm_log"), \
+    with patch("app.agents.orchestrator.stream_service", mock_stream),\
+         patch("app.agents.orchestrator.agent_trace") as mock_trace,\
+         patch("app.agents.orchestrator.init_llm_log"),\
          patch("app.config.Settings.get_provider_chain", return_value=gemini_only):
         mock_trace.return_value.__enter__ = lambda s: s
         mock_trace.return_value.__exit__ = MagicMock(return_value=False)
@@ -62,7 +51,6 @@ def test_full_pipeline_end_to_end(chroma_collection, test_db):
         orchestrator = Orchestrator(job_id=job_id)
         result = orchestrator.run(topic_id=topic_id, topic_name=TOPIC, max_papers=2)
 
-    # --- Core assertions ---
 
     assert result["papers_processed"] >= 1, (
         f"Expected at least 1 paper to be processed, got {result['papers_processed']}"
@@ -82,7 +70,6 @@ def test_full_pipeline_end_to_end(chroma_collection, test_db):
         f"extracted={result['claims_extracted']}"
     )
 
-    # --- Review content assertions ---
 
     from app.services.review_service import ReviewService
     review_service = ReviewService()

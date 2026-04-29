@@ -35,12 +35,12 @@ interface JobResponse {
   created_at: string;
 }
 
-// Pick N items spread across the list so suggestions feel varied
+
 function pickSuggestions(n: number): string[] {
   return [...SUGGESTIONS].sort(() => Math.random() - 0.5).slice(0, n);
 }
 
-// ── Suggestion dropdown ────────────────────────────────────────────────────
+
 function SuggestionsDropdown({
   suggestions,
   hoveredIdx,
@@ -67,7 +67,7 @@ function SuggestionsDropdown({
         overflow: "hidden",
       }}
     >
-      {/* Section label */}
+      {}
       <div style={{
         padding: "0.6rem 1rem 0.35rem",
         fontSize: "0.68rem", fontWeight: 700,
@@ -96,7 +96,7 @@ function SuggestionsDropdown({
             transition: "background 0.1s",
           }}
         >
-          {/* Icon */}
+          {}
           <span style={{
             width: 28, height: 28, borderRadius: 8, flexShrink: 0,
             background: hoveredIdx === i ? "#fff3eb" : "#f5f5f3",
@@ -108,7 +108,7 @@ function SuggestionsDropdown({
             🔬
           </span>
 
-          {/* Label */}
+          {}
           <span style={{
             fontSize: "0.875rem",
             fontWeight: 500,
@@ -122,7 +122,7 @@ function SuggestionsDropdown({
             {s}
           </span>
 
-          {/* Arrow hint */}
+          {}
           <span style={{
             fontSize: "0.72rem",
             color: hoveredIdx === i ? C.accent : "transparent",
@@ -135,7 +135,7 @@ function SuggestionsDropdown({
         </button>
       ))}
 
-      {/* Footer hint */}
+      {}
       <div style={{
         padding: "0.45rem 1rem",
         borderTop: `1px solid ${C.border}`,
@@ -158,7 +158,7 @@ function SuggestionsDropdown({
   );
 }
 
-// ── Home page ──────────────────────────────────────────────────────────────
+
 export default function HomePage() {
   const router = useRouter();
   const [topics,      setTopics]      = useState<Topic[]>([]);
@@ -183,7 +183,7 @@ export default function HomePage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Close dropdown when clicking outside
+
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
@@ -201,7 +201,7 @@ export default function HomePage() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setName(e.target.value);
-    // Hide dropdown once the user starts typing
+
     if (e.target.value.trim()) {
       setShowDrop(false);
       setHoveredIdx(-1);
@@ -258,7 +258,7 @@ export default function HomePage() {
 
   return (
     <main>
-      {/* ── Hero heading ─────────────────────────────────────────────── */}
+      {}
       <div style={{ marginBottom: "2rem" }}>
         <h1 style={{
           margin: "0 0 0.375rem",
@@ -272,9 +272,9 @@ export default function HomePage() {
         </p>
       </div>
 
-      {/* ── Search box + dropdown ─────────────────────────────────────── */}
+      {}
       <form onSubmit={handleSubmit} style={{ marginBottom: "2rem" }}>
-        {/* Wrapper for positioning the dropdown */}
+        {}
         <div ref={wrapRef} style={{ position: "relative" }}>
           <div style={{
             display: "flex",
@@ -338,7 +338,7 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Suggestions dropdown */}
+          {}
           {showDrop && suggestions.length > 0 && (
             <SuggestionsDropdown
               suggestions={suggestions}
@@ -349,7 +349,7 @@ export default function HomePage() {
           )}
         </div>
 
-        {/* Error */}
+        {}
         {error && (
           <div style={{
             marginTop: "0.625rem", padding: "0.625rem 0.875rem",
@@ -361,7 +361,7 @@ export default function HomePage() {
         )}
       </form>
 
-      {/* ── Topics list ──────────────────────────────────────────────── */}
+      {}
       {topics.length > 0 && (
         <section>
           <p style={{
@@ -387,7 +387,7 @@ export default function HomePage() {
   );
 }
 
-// ── Topic card ──────────────────────────────────────────────────────────────
+
 function TopicCard({ topic }: { topic: Topic }) {
   const updated = topic.last_fetched_at ? new Date(topic.last_fetched_at) : null;
   const hasData = !!updated;
@@ -401,13 +401,13 @@ function TopicCard({ topic }: { topic: Topic }) {
       borderRadius: 12,
       boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
     }}>
-      {/* Status dot */}
+      {}
       <div style={{
         width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
         background: hasData ? C.success : "rgba(0,0,0,0.15)",
       }} />
 
-      {/* Info */}
+      {}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
           fontWeight: 600, fontSize: "0.9rem", color: "#1a1a1a",
@@ -422,7 +422,7 @@ function TopicCard({ topic }: { topic: Topic }) {
         </div>
       </div>
 
-      {/* Action */}
+      {}
       <Link
         href={`/research/${topic.id}?name=${encodeURIComponent(topic.name)}${topic.latest_job_id ? `&job=${topic.latest_job_id}` : ""}`}
         style={{
