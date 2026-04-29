@@ -7,7 +7,7 @@ from app.observability.logging import configure_logging
 
 configure_logging()
 
-app = FastAPI(title="ResearchPulse", version="0.1.0")
+app = FastAPI(title="ResearchPulse", version="0.3.11")
 
 app.add_middleware(
     CORSMiddleware,
