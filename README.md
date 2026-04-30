@@ -1,8 +1,6 @@
-![ResearchPulse](docs/images/reasoning.png)
-
 # 📚 ResearchPulse
 
-> **This project is also a study and practice project for agent workflows.** It shows how to build agents without hiding the hard parts: provider calls, retries, tool use, queues, traces, errors, and final output checks.
+> **This project is a study and practice project for agent workflows.** It shows how to build agents without hiding the hard parts: provider calls, retries, tool use, queues, traces, errors, and final output checks.
 
 ResearchPulse is a multi-agent app that searches scientific papers, reads them, checks citations, and writes a clear literature review.
 
@@ -16,7 +14,7 @@ ResearchPulse is a multi-agent app that searches scientific papers, reads them, 
 
 ResearchPulse helps turn a research topic into a grounded literature review. A user enters a term like `Mindfulness and mental health`, and the system searches papers, stores useful text chunks, asks LLM agents to extract claims, validates citations with `chunk_id`, and returns a review with traceable sources.
 
-Demo video: add a GitHub uploaded video link here. GitHub READMEs work best with videos uploaded to GitHub issues, pull requests, releases, or user attachments, then linked in Markdown.
+https://github.com/user-attachments/assets/910089f9-439d-4c1f-ad98-b33f2c8d2c26
 
 ## About This Project
 
@@ -24,7 +22,7 @@ Literature reviews take a lot of time because reading papers is only one part of
 
 ResearchPulse was built to make that workflow easier. The product idea is simple: give the app a research topic, wait while the agents reason through the work, and receive a review with citations that can be checked.
 
-![Our Agents](docs/images/agentic_robots.png)
+<img src="docs/images/agentic_robots.png" width="800" />
 
 ## Agent Responsibilities
 
@@ -32,7 +30,7 @@ ResearchPulse was built to make that workflow easier. The product idea is simple
 
 - `Search Agent` finds papers. It plans search queries with an LLM, calls the paper search providers, removes duplicates, ranks the papers, and sends the best papers to the next step.
 
- - `EmbeddingService` prepares the paper text for search. It splits full text into chunks, stores the chunks in ChromaDB, and keeps metadata like `paper_id` and `chunk_id` so citations can be checked later.
+  - `EmbeddingService` prepares the paper text for search. It splits full text into chunks, stores the chunks in ChromaDB, and keeps metadata like `paper_id` and `chunk_id` so citations can be checked later.
 
 - `Extract Agent` reads stored chunks and extracts useful claims. It uses an LLM to turn paper text into structured claims, but each claim must point back to a real stored chunk.
 
@@ -71,8 +69,8 @@ ResearchPulse uses a web app, an API, a queue, background workers, a vector data
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/<your-org>/researchpulse.git
-cd researchpulse
+git clone https://github.com/douglas-soriano/agentic-research-pulse.git
+cd agentic-research-pulse
 ```
 
 ### 2. Configure environment
@@ -119,15 +117,16 @@ Local URLs:
 
 Open `http://localhost:3000`.
 
-![Home Screen](docs/images/initial_page.png)
+<img src="docs/images/initial_page.png" width="800" />
 
 Type a research topic, for example `Mindfulness and mental health`, and start the research run. The app will create a background job and show the reasoning steps while the agents work.
 
-![Reasoning](docs/images/reasoning.png)
+<img src="docs/images/reasoning.png" width="800" />
 
 When the job finishes, the result page shows the final review, the selected papers, extracted claims, and citations.
 
-![Reasoning](docs/images/reasoning.png)
+<img src="https://github.com/user-attachments/assets/0ebc2d4c-7fd1-4236-b92c-b0ebcc25effa" width="800" />
+
 
 ## Key Engineering Decisions
 
