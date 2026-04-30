@@ -102,7 +102,7 @@ class Orchestrator:
                         step="search",
                     )
                     synthesis_result = {
-                        "synthesis": "No papers found for this topic on arXiv. Try a broader or different search term.",
+                        "synthesis": "No papers found for this topic. Try a broader or different search term.",
                         "citations": {},
                         "cited_papers": [],
                         "citations_verified": 0,
@@ -153,7 +153,7 @@ class Orchestrator:
                     )
                     synthesis_result = {
                         "synthesis": "Papers were retrieved but none could be embedded for this topic. "
-                                     "This may happen when arXiv returns unrelated results for an unknown search term.",
+                                     "This may happen when the search providers return unrelated results for an unknown search term.",
                         "citations": {},
                         "cited_papers": [],
                         "citations_verified": 0,

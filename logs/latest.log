@@ -1,17 +1,17 @@
 ========================================================================
-PIPELINE START: Large language model alignment techniques
-Job ID:         960309fd-54ae-4df0-ada9-aae6451e5fd0
-Started at:     2026-04-27 04:59:26 UTC
+PIPELINE START: Mindfulness and mental health
+Job ID:         3b0d913a-d3fd-40a8-9952-b7b7450bc3cd
+Started at:     2026-04-30 00:06:20 UTC
 ========================================================================
 
 ========================================================================
-[04:59:27] search_agent  structured=QueryPlan  budget=1/60
+[00:06:26] search_agent  structured=QueryPlan  budget=1/60
 ========================================================================
 --- MESSAGES SENT ---
 [SYSTEM]
 You are a scientific literature search specialist.
 
-Given a research topic, produce 3 diverse arXiv search queries that cover different angles:
+Given a research topic, produce 3 diverse scientific literature search queries that cover different angles:
 - Query 1: core methodology / algorithms / techniques
 - Query 2: application domains / use cases / systems
 - Query 3: evaluation / benchmarks / surveys / limitations
@@ -22,56 +22,86 @@ Return ONLY this JSON — no prose, no markdown:
 Each query should use different descriptive keywords to maximise paper coverage.
 
 CRITICAL RULES — violating any of these will cause the search to fail:
-- Use ONLY descriptive keywords (e.…
+- Use ONLY descript…
 
 [USER]
-Topic: Large language model alignment techniques
+Topic: Mindfulness and mental health
 
-Generate 3 diverse arXiv search queries. Return JSON only.
+Generate 3 diverse scientific literature search queries. Return JSON only.
+
+--- RESPONSE ---
+[ERROR] [gemini] <failed_attempts>
+
+<generation number="1">
+<exception>
+    Error code: 429 - [{'error': {'code': 429, 'message': 'Resource exhausted. Please try again later. Please refer to https://cloud.google.com/v
+
+
+========================================================================
+[00:06:31] search_agent  structured=QueryPlan  budget=1/60
+========================================================================
+--- MESSAGES SENT ---
+[SYSTEM]
+You are a scientific literature search specialist.
+
+Given a research topic, produce 3 diverse scientific literature search queries that cover different angles:
+- Query 1: core methodology / algorithms / techniques
+- Query 2: application domains / use cases / systems
+- Query 3: evaluation / benchmarks / surveys / limitations
+
+Return ONLY this JSON — no prose, no markdown:
+{"queries": ["<query 1>", "<query 2>", "<query 3>"]}
+
+Each query should use different descriptive keywords to maximise paper coverage.
+
+CRITICAL RULES — violating any of these will cause the search to fail:
+- Use ONLY descript…
+
+[USER]
+Topic: Mindfulness and mental health
+
+Generate 3 diverse scientific literature search queries. Return JSON only.
+
+--- RESPONSE ---
+[ERROR] [chatgpt] <failed_attempts>
+
+<generation number="1">
+<exception>
+    Error code: 429 - {'error': {'message': 'You exceeded your current quota, please check your plan and billing details. For more information on
+
+
+========================================================================
+[00:06:35] search_agent  structured=QueryPlan  budget=1/60
+========================================================================
+--- MESSAGES SENT ---
+[SYSTEM]
+You are a scientific literature search specialist.
+
+Given a research topic, produce 3 diverse scientific literature search queries that cover different angles:
+- Query 1: core methodology / algorithms / techniques
+- Query 2: application domains / use cases / systems
+- Query 3: evaluation / benchmarks / surveys / limitations
+
+Return ONLY this JSON — no prose, no markdown:
+{"queries": ["<query 1>", "<query 2>", "<query 3>"]}
+
+Each query should use different descriptive keywords to maximise paper coverage.
+
+CRITICAL RULES — violating any of these will cause the search to fail:
+- Use ONLY descript…
+
+[USER]
+Topic: Mindfulness and mental health
+
+Generate 3 diverse scientific literature search queries. Return JSON only.
 
 --- RESPONSE ---
 [QueryPlan]
-{"queries":["reinforcement learning from human feedback language model preference optimization","constitutional AI red teaming safety robustness fairness large language model","interpretability explainability bias detection mitigation alignment language model survey"]}
+{"queries":["mindfulness-based interventions cognitive behavioral therapy","mindfulness in depression treatment applications","evaluating mindfulness programs effectiveness limitations"]}
 
 
 ========================================================================
-[04:59:42] extract_agent  structured=ClaimsOutput  budget=2/60
-========================================================================
---- MESSAGES SENT ---
-[SYSTEM]
-You are a scientific claim extraction assistant.
-
-You will receive a list of text chunks from a research paper, each labeled with an index number.
-
-For each chunk that contains meaningful scientific content (findings, methods, contributions, or limitations),
-write a concise 1–2 sentence claim summarising the key point.
-
-Skip chunks that are:
-- Navigation text, headers, or HTML boilerplate
-- Reference lists or citations only
-- Very short or uninformative
-
-Return ONLY this JSON — no prose, no markdown:
-{"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
-
-[USER]
-Paper: Making Large Language Models Better Reasoners with Alignment
-Authors: Peiyi Wang, Lei Li, Liang Chen
-Abstract: Reasoning is a cognitive process of using evidence to reach a sound conclusion. The reasoning capability is essential for large language models (LLMs) to serve as the brain of the artificial general intelligence agent. Recent studies reveal that fine-tuning LLMs on data with the chain of thought (CO
-
-Chunks (5 total):
-[
-  {
-    "index": 0,
-    "text": "[2309.02144] Making Large Language Models Better Reasoners with Alignment Making Large Language Models Better Reasoners with Al…
-
---- RESPONSE ---
-[ClaimsOutput]
-{"claims":[{"index":2,"text":"Vanilla fine-tuned LLMs with chain-of-thought reasoning suffer from an assessment misalignment problem, hindering their reasoning ability.","category":"finding","confidence":0.9},{"index":2,"text":"An alignment fine-tuning (AFT) paradigm is proposed with a novel constraint alignment loss that aligns model assessment behaviors without harming model performance.","category":"method","confidence":0.9},{"index":3,"text":"Experiments demonstrate the effectiveness of AFT on four reasoning benchmarks with binary and ranking feedback, showing good performance in multi-task and out-of-distribution situations.","category":"finding","confidence":0.9},{"index":4,"text":"An alignment fine-tuning (AFT) paradigm is proposed to improve LLM reasoning, involving fine-tuning LLM…
-
-
-========================================================================
-[04:59:44] extract_agent  structured=ClaimsOutput  budget=3/60
+[00:06:55] extract_agent  structured=ClaimsOutput  budget=2/60
 ========================================================================
 --- MESSAGES SENT ---
 [SYSTEM]
@@ -91,23 +121,23 @@ Return ONLY this JSON — no prose, no markdown:
 {"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
 
 [USER]
-Paper: ASSERT: Automated Safety Scenario Red Teaming for Evaluating the Robustness of Large Language Models
-Authors: Alex Mei, Sharon Levy, William Yang Wang
-Abstract: As large language models are integrated into society, robustness toward a suite of prompts is increasingly important to maintain reliability in a high-variance environment.Robustness evaluations must comprehensively encapsulate the various settings in which a user may invoke an intelligent system. T
+Paper: Teaching self-care to caregivers: Effects of mindfulness-based stress reduction on the mental health of therapists in training.
+Authors: Shauna L. Shapiro, Kirk Warren Brown, Gina M. Biegel
+Abstract: Preparation for the role of therapist can occur on both professional and personal levels. Research has found that therapists are at risk for occupationally related psychological problems. It follows that self-care may be a useful complement to the professional training of future therapists. The pres
 
-Chunks (5 total):
+Chunks (1 total):
 [
   {
     "index": 0,
-    "text": "[2310.09624] Assert: Automated Safety Scenario Red Teaming for Evaluating the…
+    "text": "Preparation for the role of therapist …
 
 --- RESPONSE ---
 [ClaimsOutput]
-{"claims":[{"index":2,"text":"It is essential to develop systems that are robust in all settings, including semantically similar scenarios and adversarial prompts, to mitigate the potential of users’ physical harm in critical domains such as AI safety.","category":"contribution","confidence":0.9},{"index":3,"text":"The automated methods for generating robustness evaluation samples can be dependent on human intervention, particularly in the semantically aligned augmentation and adversarial knowledge injection settings.","category":"limitation","confidence":0.85},{"index":4,"text":"The study is limited by its focus on the domain of AI safety and the reliance on the SafeText dataset, which restricts the number of samples available for analysis.","category":"limitation","confidence":0.9}]}
+{"claims":[{"index":0,"text":"Therapists are at risk for occupationally related psychological problems, suggesting self-care may be a useful complement to their professional training.","category":"finding","confidence":0.8}]}
 
 
 ========================================================================
-[04:59:47] extract_agent  structured=ClaimsOutput  budget=4/60
+[00:06:56] extract_agent  structured=ClaimsOutput  budget=3/60
 ========================================================================
 --- MESSAGES SENT ---
 [SYSTEM]
@@ -127,23 +157,287 @@ Return ONLY this JSON — no prose, no markdown:
 {"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
 
 [USER]
-Paper: Online Iterative Reinforcement Learning from Human Feedback with General Preference Model
-Authors: Chenlu Ye, Wei Xiong, Yuheng Zhang
-Abstract: We investigate Reinforcement Learning from Human Feedback (RLHF) in the context of a general preference oracle. In particular, we do not assume the existence of a reward function and an oracle preference signal drawn from the Bradley-Terry model as most of the prior works do. We consider a standard 
+Paper: Mindfulness and acceptance: expanding the cognitive-behavioral tradition
+Authors: Hayes, Steven C. 1948-
+Abstract: 1. Acceptance and Commitment Therapy and the New Behavior Therapies: Mindfulness, Acceptance, and Relationship, Steven C. Hayes2. Dialectical Behavior Therapy: Synthesizing Radical Acceptance with Skillful Means, Clive J. Robins, Henry Schmidt III, and Marsha M. Linehan3. Mindfulness-Based Cognitive
 
-Chunks (5 total):
+Chunks (1 total):
 [
   {
     "index": 0,
-    "text": "batch online learning from iterative interactions with a preference oracle, our proposed algor…
+    "text": "1. Acceptance and Commitment Therapy and the New Behavior Therapies: Mindfulness, Acceptance, and Relationship, Steven C. H…
 
 --- RESPONSE ---
 [ClaimsOutput]
-{"claims":[{"index":0,"text":"The proposed algorithm enjoys a finite sample guarantee under the structural condition of the underlying preference model in batch online learning from iterative interactions with a preference oracle. The results connect the new NLHF paradigm with traditional RL theory, and validate the potential of reward-model-free learning under general preference.","category":"contribution","confidence":0.9},{"index":2,"text":"This work considers the relative preference, consistent with reward-based RLHF under the BT model, and the output policy of the proposed algorithm can automatically adapt to the reward-maximization scenario.","category":"method","confidence":0.85},{"index":3,"text":"Preference model construction demonstrates significant practical efficiency compared …
+{"claims":[]}
 
 
 ========================================================================
-[04:59:57] synthesis_agent  structured=SynthesisOutput  budget=5/60
+[00:07:02] extract_agent  structured=ClaimsOutput  budget=4/60
+========================================================================
+--- MESSAGES SENT ---
+[SYSTEM]
+You are a scientific claim extraction assistant.
+
+You will receive a list of text chunks from a research paper, each labeled with an index number.
+
+For each chunk that contains meaningful scientific content (findings, methods, contributions, or limitations),
+write a concise 1–2 sentence claim summarising the key point.
+
+Skip chunks that are:
+- Navigation text, headers, or HTML boilerplate
+- Reference lists or citations only
+- Very short or uninformative
+
+Return ONLY this JSON — no prose, no markdown:
+{"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
+
+[USER]
+Paper: Lifestyle medicine for depression
+Authors: Jerome Sarris, Adrienne O’Neil, Carolyn Coulson
+Abstract: The prevalence of depression appears to have increased over the past three decades. While this may be an artefact of diagnostic practices, it is likely that there are factors about modernity that are contributing to this rise. There is now compelling evidence that a range of lifestyle factors are in
+
+Chunks (1 total):
+[
+  {
+    "index": 0,
+    "text": "The prevalence of depression appears to have increased over the past three decades. While this may be an artefact of diagnostic practices…
+
+--- RESPONSE ---
+[ERROR] [gemini] <failed_attempts>
+
+<generation number="1">
+<exception>
+    Error code: 429 - [{'error': {'code': 429, 'message': 'Resource exhausted. Please try again later. Please refer to https://cloud.google.com/v
+
+
+========================================================================
+[00:07:06] extract_agent  structured=ClaimsOutput  budget=4/60
+========================================================================
+--- MESSAGES SENT ---
+[SYSTEM]
+You are a scientific claim extraction assistant.
+
+You will receive a list of text chunks from a research paper, each labeled with an index number.
+
+For each chunk that contains meaningful scientific content (findings, methods, contributions, or limitations),
+write a concise 1–2 sentence claim summarising the key point.
+
+Skip chunks that are:
+- Navigation text, headers, or HTML boilerplate
+- Reference lists or citations only
+- Very short or uninformative
+
+Return ONLY this JSON — no prose, no markdown:
+{"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
+
+[USER]
+Paper: Lifestyle medicine for depression
+Authors: Jerome Sarris, Adrienne O’Neil, Carolyn Coulson
+Abstract: The prevalence of depression appears to have increased over the past three decades. While this may be an artefact of diagnostic practices, it is likely that there are factors about modernity that are contributing to this rise. There is now compelling evidence that a range of lifestyle factors are in
+
+Chunks (1 total):
+[
+  {
+    "index": 0,
+    "text": "The prevalence of depression appears to have increased over the past three decades. While this may be an artefact of diagnostic practices…
+
+--- RESPONSE ---
+[ERROR] [chatgpt] <failed_attempts>
+
+<generation number="1">
+<exception>
+    Error code: 429 - {'error': {'message': 'You exceeded your current quota, please check your plan and billing details. For more information on
+
+
+========================================================================
+[00:07:10] extract_agent  structured=ClaimsOutput  budget=4/60
+========================================================================
+--- MESSAGES SENT ---
+[SYSTEM]
+You are a scientific claim extraction assistant.
+
+You will receive a list of text chunks from a research paper, each labeled with an index number.
+
+For each chunk that contains meaningful scientific content (findings, methods, contributions, or limitations),
+write a concise 1–2 sentence claim summarising the key point.
+
+Skip chunks that are:
+- Navigation text, headers, or HTML boilerplate
+- Reference lists or citations only
+- Very short or uninformative
+
+Return ONLY this JSON — no prose, no markdown:
+{"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
+
+[USER]
+Paper: Lifestyle medicine for depression
+Authors: Jerome Sarris, Adrienne O’Neil, Carolyn Coulson
+Abstract: The prevalence of depression appears to have increased over the past three decades. While this may be an artefact of diagnostic practices, it is likely that there are factors about modernity that are contributing to this rise. There is now compelling evidence that a range of lifestyle factors are in
+
+Chunks (1 total):
+[
+  {
+    "index": 0,
+    "text": "The prevalence of depression appears to have increased over the past three decades. While this may be an artefact of diagnostic practices…
+
+--- RESPONSE ---
+[ClaimsOutput]
+{"claims":[{"index":0,"text":"The prevalence of depression has increased over the past three decades due to modernity factors and lifestyle factors contributing to its pathogenesis.","category":"finding","confidence":0.9}]}
+
+
+========================================================================
+[00:07:16] extract_agent  structured=ClaimsOutput  budget=5/60
+========================================================================
+--- MESSAGES SENT ---
+[SYSTEM]
+You are a scientific claim extraction assistant.
+
+You will receive a list of text chunks from a research paper, each labeled with an index number.
+
+For each chunk that contains meaningful scientific content (findings, methods, contributions, or limitations),
+write a concise 1–2 sentence claim summarising the key point.
+
+Skip chunks that are:
+- Navigation text, headers, or HTML boilerplate
+- Reference lists or citations only
+- Very short or uninformative
+
+Return ONLY this JSON — no prose, no markdown:
+{"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
+
+[USER]
+Paper: Technology in Association With Mental Health: Meta-ethnography
+Authors: Hamza Mohammed
+Abstract: This research paper presents a meta-analysis of the multifaceted role of technology in mental health. The pervasive influence of technology on daily lives necessitates a deep understanding of its impact on mental health services. This study synthesizes literature covering Behavioral Intervention Tec
+
+Chunks (1 total):
+[
+  {
+    "index": 0,
+    "text": "Title: Technology in Association With Mental Health: Meta-ethnography  Abstract: This research paper presents a meta-analysis of the multifac…
+
+--- RESPONSE ---
+[ERROR] [gemini] <failed_attempts>
+
+<generation number="1">
+<exception>
+    Error code: 429 - [{'error': {'code': 429, 'message': 'Resource exhausted. Please try again later. Please refer to https://cloud.google.com/v
+
+
+========================================================================
+[00:07:21] extract_agent  structured=ClaimsOutput  budget=5/60
+========================================================================
+--- MESSAGES SENT ---
+[SYSTEM]
+You are a scientific claim extraction assistant.
+
+You will receive a list of text chunks from a research paper, each labeled with an index number.
+
+For each chunk that contains meaningful scientific content (findings, methods, contributions, or limitations),
+write a concise 1–2 sentence claim summarising the key point.
+
+Skip chunks that are:
+- Navigation text, headers, or HTML boilerplate
+- Reference lists or citations only
+- Very short or uninformative
+
+Return ONLY this JSON — no prose, no markdown:
+{"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
+
+[USER]
+Paper: Technology in Association With Mental Health: Meta-ethnography
+Authors: Hamza Mohammed
+Abstract: This research paper presents a meta-analysis of the multifaceted role of technology in mental health. The pervasive influence of technology on daily lives necessitates a deep understanding of its impact on mental health services. This study synthesizes literature covering Behavioral Intervention Tec
+
+Chunks (1 total):
+[
+  {
+    "index": 0,
+    "text": "Title: Technology in Association With Mental Health: Meta-ethnography  Abstract: This research paper presents a meta-analysis of the multifac…
+
+--- RESPONSE ---
+[ERROR] [chatgpt] <failed_attempts>
+
+<generation number="1">
+<exception>
+    Error code: 429 - {'error': {'message': 'You exceeded your current quota, please check your plan and billing details. For more information on
+
+
+========================================================================
+[00:07:27] extract_agent  structured=ClaimsOutput  budget=5/60
+========================================================================
+--- MESSAGES SENT ---
+[SYSTEM]
+You are a scientific claim extraction assistant.
+
+You will receive a list of text chunks from a research paper, each labeled with an index number.
+
+For each chunk that contains meaningful scientific content (findings, methods, contributions, or limitations),
+write a concise 1–2 sentence claim summarising the key point.
+
+Skip chunks that are:
+- Navigation text, headers, or HTML boilerplate
+- Reference lists or citations only
+- Very short or uninformative
+
+Return ONLY this JSON — no prose, no markdown:
+{"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
+
+[USER]
+Paper: Technology in Association With Mental Health: Meta-ethnography
+Authors: Hamza Mohammed
+Abstract: This research paper presents a meta-analysis of the multifaceted role of technology in mental health. The pervasive influence of technology on daily lives necessitates a deep understanding of its impact on mental health services. This study synthesizes literature covering Behavioral Intervention Tec
+
+Chunks (1 total):
+[
+  {
+    "index": 0,
+    "text": "Title: Technology in Association With Mental Health: Meta-ethnography  Abstract: This research paper presents a meta-analysis of the multifac…
+
+--- RESPONSE ---
+[ClaimsOutput]
+{"claims":[{"index":0,"text":"This research paper presents a meta-analysis of the multifaceted role of technology in mental health.","category":"finding","confidence":0.9},{"index":0,"text":"The study synthesizes literature covering Behavioral Intervention Technologies (BITs), digital interventions during COVID-19, young men's attitudes toward mental health technologies, and technology-based interventions for university students.","category":"finding","confidence":0.8}]}
+
+
+========================================================================
+[00:07:28] extract_agent  structured=ClaimsOutput  budget=6/60
+========================================================================
+--- MESSAGES SENT ---
+[SYSTEM]
+You are a scientific claim extraction assistant.
+
+You will receive a list of text chunks from a research paper, each labeled with an index number.
+
+For each chunk that contains meaningful scientific content (findings, methods, contributions, or limitations),
+write a concise 1–2 sentence claim summarising the key point.
+
+Skip chunks that are:
+- Navigation text, headers, or HTML boilerplate
+- Reference lists or citations only
+- Very short or uninformative
+
+Return ONLY this JSON — no prose, no markdown:
+{"claims": [{"index": <int>, "text": "<claim>", "category": "<finding|method|limitation|contri…
+
+[USER]
+Paper: Geometric Meditation-Based Cognitive Behavioral Therapy in Obsessive-Compulsive Disorder: A Case Study
+Authors: Fatemeh Torkamani, Farshad Nazaraghaie, Mohammad Nami
+Abstract: Obsessive-Compulsive Disorder (OCD), characterized by unwanted and distressing intrusive thoughts, images, urges, doubts and ideas or sensations and repetitive mental or behavioral acts, which is regarded as an overwhelming mental disorder. Over the past few years, several studies have indicated how
+
+Chunks (1 total):
+[
+  {
+    "index": 0,
+    "text": "Title: Geometric Meditation-Based Cognitive Behavioral Therapy…
+
+--- RESPONSE ---
+[ClaimsOutput]
+{"claims":[{"index":0,"text":"Obsessive-Compulsive Disorder (OCD) is characterized by unwanted and distressing intrusive thoughts, images, urges, doubts and ideas or sensations and repetitive mental or behavioral acts. Studies suggest mindfulness-based interventions may be effective in remediating OCD symptoms.","category":"finding","confidence":0.9}]}
+
+
+========================================================================
+[00:07:36] synthesis_agent  structured=SynthesisOutput  budget=7/60
 ========================================================================
 --- MESSAGES SENT ---
 [SYSTEM]
@@ -165,21 +459,112 @@ RULES:
 - Place each [citation_XXXX] token immed…
 
 [USER]
-Topic: 'Large language model alignment techniques'
+Topic: 'Mindfulness and mental health'
 
-Pre-verified claims (11 total):
+Pre-verified claims (5 total):
 [
   {
     "citation": "[citation_0001]",
-    "text": "Vanilla fine-tuned LLMs with chain-of-thought reasoning suffer from an assessment misalignment problem, hindering their reasoning ability.",
+    "text": "Therapists are at risk for occupationally related psychological problems, suggesting self-care may be a useful complement to their professional training.",
     "category": "finding",
-    "paper_title": "Making Large Language Models Better Reasoners with Alignment"
+    "paper_title": "Teaching self-care to caregivers: Effects of mindfulness-based stress reduction on the mental health of therapists in training."
   },
   {
     "citation": "[citation_0002]",
-    "text": "An alignment fine-tuning (AFT) paradigm is proposed with a novel constraint alignment loss that aligns model assessment behaviors without harming model per…
+    "text": "The prevalence of depression has increased over the past three decades due to modernit…
+
+--- RESPONSE ---
+[ERROR] [gemini] <failed_attempts>
+
+<generation number="1">
+<exception>
+    1 validation error for SynthesisOutput
+  Invalid JSON: control character (\u0000-\u001F) found while parsing a string at line 3 column 0 [typ
+
+
+========================================================================
+[00:07:41] synthesis_agent  structured=SynthesisOutput  budget=7/60
+========================================================================
+--- MESSAGES SENT ---
+[SYSTEM]
+You are a scientific synthesis agent producing a living literature review.
+
+You will receive a list of pre-verified claims, each tagged with a citation token like [citation_0001].
+
+TASK:
+Write a 4–6 paragraph synthesis covering: main themes, key findings, methodological patterns, and open problems.
+Use [citation_XXXX] tokens inline to reference the claims.
+
+OUTPUT FORMAT — return ONLY this JSON, no prose, no markdown:
+{
+  "synthesis": "<text with [citation_XXXX] tokens inline>"
+}
+
+RULES:
+- Use the exact citation tokens provided — do not invent new ones.
+- Place each [citation_XXXX] token immed…
+
+[USER]
+Topic: 'Mindfulness and mental health'
+
+Pre-verified claims (5 total):
+[
+  {
+    "citation": "[citation_0001]",
+    "text": "Therapists are at risk for occupationally related psychological problems, suggesting self-care may be a useful complement to their professional training.",
+    "category": "finding",
+    "paper_title": "Teaching self-care to caregivers: Effects of mindfulness-based stress reduction on the mental health of therapists in training."
+  },
+  {
+    "citation": "[citation_0002]",
+    "text": "The prevalence of depression has increased over the past three decades due to modernit…
+
+--- RESPONSE ---
+[ERROR] [chatgpt] <failed_attempts>
+
+<generation number="1">
+<exception>
+    Error code: 429 - {'error': {'message': 'You exceeded your current quota, please check your plan and billing details. For more information on
+
+
+========================================================================
+[00:07:52] synthesis_agent  structured=SynthesisOutput  budget=7/60
+========================================================================
+--- MESSAGES SENT ---
+[SYSTEM]
+You are a scientific synthesis agent producing a living literature review.
+
+You will receive a list of pre-verified claims, each tagged with a citation token like [citation_0001].
+
+TASK:
+Write a 4–6 paragraph synthesis covering: main themes, key findings, methodological patterns, and open problems.
+Use [citation_XXXX] tokens inline to reference the claims.
+
+OUTPUT FORMAT — return ONLY this JSON, no prose, no markdown:
+{
+  "synthesis": "<text with [citation_XXXX] tokens inline>"
+}
+
+RULES:
+- Use the exact citation tokens provided — do not invent new ones.
+- Place each [citation_XXXX] token immed…
+
+[USER]
+Topic: 'Mindfulness and mental health'
+
+Pre-verified claims (5 total):
+[
+  {
+    "citation": "[citation_0001]",
+    "text": "Therapists are at risk for occupationally related psychological problems, suggesting self-care may be a useful complement to their professional training.",
+    "category": "finding",
+    "paper_title": "Teaching self-care to caregivers: Effects of mindfulness-based stress reduction on the mental health of therapists in training."
+  },
+  {
+    "citation": "[citation_0002]",
+    "text": "The prevalence of depression has increased over the past three decades due to modernit…
 
 --- RESPONSE ---
 [SynthesisOutput]
-{"synthesis":"Large language model (LLM) alignment is a crucial area of research aimed at ensuring that these models behave safely, ethically, and in accordance with human values. Current state-of-the-art reward models, often used in reinforcement learning from human feedback (RLHF), achieve limited accuracy, typically around 70-80% [citation_0011]. This limitation motivates the exploration of alternative alignment techniques, such as directly optimizing for preferences [citation_0009].\n\nOne promising approach involves alignment fine-tuning (AFT), designed to improve LLM reasoning capabilities [citation_0004]. AFT addresses the assessment misalignment problem observed in vanilla fine-tuned LLMs using chain-of-thought (COT) reasoning, which can hinder their reasoning ability [citation_000…
+{"synthesis":"[citation_0001] highlights therapists' vulnerability to psychological issues, underlining the importance of self-care through practices such as mindfulness. This emphasizes that even professionals in mental health need personal care strategies, suggesting a holistic approach to well-being [citation_0005]. [citation_0002] draws attention to the rising prevalence of depression linked with modernity and lifestyle changes, urging prevention and intervention methods beyond traditional care models. Meanwhile, both [citation_0003] and [citation_0004] focus on technology's dual nature in mental health – how it can exacerbate conditions as well as provide innovative solutions for treatment and support. Notably, the studies within these papers explore digital interventions during chall…
 

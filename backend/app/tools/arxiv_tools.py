@@ -60,6 +60,7 @@ def search_arxiv(query: str, max_results: int = ARXIV_DEFAULT_MAX_RESULTS) -> di
             "abstract": abstract[:ARXIV_ABSTRACT_MAX_CHARS] + ("…" if len(abstract) > ARXIV_ABSTRACT_MAX_CHARS else ""),
             "published_at": published_at.isoformat(),
             "url": f"https://arxiv.org/abs/{arxiv_id}",
+            "source": "arxiv",
         })
 
     return {"papers": papers, "total_found": len(papers)}
