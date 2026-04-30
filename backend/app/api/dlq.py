@@ -1,10 +1,3 @@
-"""
-Dead Letter Queue inspection and retry endpoints.
-
-GET  /api/v1/dlq              — list failed jobs
-GET  /api/v1/dlq/{job_id}     — get one failed job entry
-POST /api/v1/dlq/{job_id}/retry — re-enqueue the failed job
-"""
 import uuid
 from datetime import datetime
 
@@ -82,7 +75,7 @@ def retry_failed_job(job_id: str):
         max_papers=max_papers,
     )
 
-    # Remove from DLQ only after successfully re-enqueuing.
+
     dlq_service.remove(job_id)
 
     logger.info(

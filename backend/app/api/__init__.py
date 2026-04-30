@@ -1,10 +1,11 @@
 from fastapi import APIRouter
-from .topics import router as topics_router
-from .reviews import router as reviews_router
-from .traces import router as traces_router
-from .stream import router as stream_router
-from .metrics import router as metrics_router
-from .dlq import router as dlq_router
+
+from app.api.dlq import router as dlq_router
+from app.api.metrics import router as metrics_router
+from app.api.reviews import router as reviews_router
+from app.api.stream import router as stream_router
+from app.api.topics import router as topics_router
+from app.api.traces import router as traces_router
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(topics_router)

@@ -1,16 +1,3 @@
-"""
-Redis-backed circuit breaker for LLM provider calls.
-
-States:
-  CLOSED    — normal operation
-  OPEN      — failing fast; no requests allowed
-  HALF_OPEN — one test request allowed; success closes, failure reopens
-
-Thresholds:
-  3 failures in 30 s → OPEN
-  OPEN for 60 s → HALF_OPEN
-  HALF_OPEN + success → CLOSED
-"""
 import time
 import uuid
 
@@ -40,19 +27,15 @@ class CircuitBreaker:
         self._state_key = f"researchpulse:circuit:{provider_name}"
         self._failures_key = f"researchpulse:circuit:{provider_name}:failures"
 
-    # ------------------------------------------------------------------
-    # State management
-    # ------------------------------------------------------------------
-
     def _get_raw_state(self) -> tuple[str, float]:
-        """Return (state_str, opened_at_timestamp)."""
         try:
             r = _get_redis()
-            data = r.hgetall(self._state_key)
-            if not data:
+            stored_state = r.hgetall(self._state_key)
+            if not stored_state:
                 return CLOSED, 0.0
-            return data.get("state", CLOSED), float(data.get("opened_at", 0))
-        except Exception:
+            return stored_state.get("state", CLOSED), float(stored_state.get("opened_at", 0))
+        except Exception as exc:
+            logger.warning("circuit_breaker_state_read_failed", error=str(exc), provider=self.name)
             return CLOSED, 0.0
 
     @property
@@ -84,10 +67,6 @@ class CircuitBreaker:
         except Exception as exc:
             logger.warning("circuit_breaker_redis_error", error=str(exc), provider=self.name)
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
     def allow_request(self) -> bool:
         state = self.state
         if state in (CLOSED, HALF_OPEN):
@@ -100,8 +79,8 @@ class CircuitBreaker:
         if state == HALF_OPEN:
             try:
                 _get_redis().delete(self._failures_key)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("circuit_breaker_failure_reset_failed", error=str(exc), provider=self.name)
             self._transition(CLOSED)
 
     def record_failure(self) -> None:
@@ -130,10 +109,9 @@ class CircuitBreaker:
 
 
 class CircuitOpenError(RuntimeError):
-    """Raised when all LLM providers have open circuits."""
+    ...
 
 
-# Module-level registry — one CB instance per provider, reused across calls.
 _breakers: dict[str, CircuitBreaker] = {}
 
 

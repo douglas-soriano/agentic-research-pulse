@@ -1,12 +1,3 @@
-"""
-BaseAgent — shared agentic loop logic with retry, tracing, and tool dispatch.
-All specialized agents inherit from this.
-
-Uses the openai SDK pointed at Gemini's OpenAI-compatible endpoint:
-- Messages are plain dicts: {role, content} / {role, tool_calls} / {role: tool, tool_call_id, content}
-- Tool declarations follow the OpenAI function-calling format.
-- "Done" = no tool_calls on the response message.
-"""
 import json
 import os
 import random
@@ -19,6 +10,15 @@ import structlog
 from openai import OpenAI, APIStatusError
 from pydantic import BaseModel
 
+from app.constants import (
+    LLM_COMPLETION_MAX_TOKENS,
+    LLM_RETRY_JITTER_SECONDS,
+    LLM_RETRY_MAX_JITTER_SECONDS,
+    STRUCTURED_PREVIEW_CHARS,
+    TOOL_PREVIEW_CHARS,
+    TOOL_RETRY_MAX_SLEEP_SECONDS,
+    TRACE_PREVIEW_CHARS,
+)
 from app.config import settings, ProviderConfig
 from app.observability.cost import estimate_cost_usd
 from app.resilience.circuit_breaker import get_circuit_breaker, CircuitOpenError
@@ -31,16 +31,15 @@ LLM_LOG_FILE = os.path.join(LLM_LOG_DIR, "latest.log")
 
 
 def _wrap_openai_if_enabled(client: OpenAI) -> OpenAI:
-    """Wrap the OpenAI client with LangSmith tracing when enabled."""
     try:
         from langsmith.wrappers import wrap_openai
         return wrap_openai(client)
-    except Exception:
+    except ImportError as exc:
+        logger.info("langsmith_wrapper_unavailable", error=str(exc))
         return client
 
 
 def init_llm_log(topic: str, job_id: str) -> None:
-    """Call once at the start of each pipeline run to reset the log."""
     os.makedirs(LLM_LOG_DIR, exist_ok=True)
     with open(LLM_LOG_FILE, "w", encoding="utf-8") as f:
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -52,14 +51,6 @@ def init_llm_log(topic: str, job_id: str) -> None:
 
 
 class LLMCallBudget:
-    """
-    Shared call counter for all agents in the same pipeline job.
-    Pass one instance to every agent so they all draw from the same budget.
-
-    Raises BudgetExhaustedError when the hard cap is reached, which
-    propagates up through the orchestrator and marks the job as failed
-    with a clear message — not a silent loop.
-    """
 
     def __init__(self, limit: int):
         self.limit = limit
@@ -79,7 +70,7 @@ class LLMCallBudget:
 
 
 class BudgetExhaustedError(RuntimeError):
-    """Raised when a pipeline job exceeds its LLM API call budget."""
+    ...
 
 
 class BaseAgent:
@@ -100,12 +91,7 @@ class BaseAgent:
         self.tools: list[dict] = []
         self.tool_map: dict[str, Any] = {}
 
-    # ------------------------------------------------------------------
-    # Retry helpers
-    # ------------------------------------------------------------------
-
     def _is_transient_llm_error(self, exc: BaseException) -> bool:
-        """Transient infrastructure errors — worth retrying on the same provider."""
         if isinstance(exc, APIStatusError):
             if exc.status_code in (429, 500, 503):
                 return True
@@ -117,21 +103,10 @@ class BaseAgent:
         )
 
     def _is_provider_fatal_error(self, exc: BaseException) -> bool:
-        """
-        Permanent provider-level failures that should trigger a provider switch.
-
-        IMPORTANT: instructor wraps API errors in InstructorRetryException, so
-        isinstance(exc, APIStatusError) is often False here. All detection must
-        also work via text patterns on str(exc), which includes the original error.
-
-        Auth failures (401, 403, 400 API_KEY_INVALID) and quota exhaustion belong
-        here — they will never recover on this provider for this job.
-        """
         if isinstance(exc, APIStatusError):
             if exc.status_code in (401, 403):
                 return True
             if exc.status_code == 400:
-                # Gemini returns 400 for invalid API keys
                 msg = str(exc).lower()
                 return (
                     "api_key_invalid" in msg
@@ -142,21 +117,17 @@ class BaseAgent:
                 msg = str(exc).lower()
                 return "resource exhausted" in msg or "quota" in msg
 
-        # Text-based fallback — catches instructor-wrapped exceptions where
-        # isinstance(exc, APIStatusError) is False but the original error text
-        # is embedded in str(exc).
         msg = str(exc).lower()
         return (
             "resource exhausted" in msg
             or "quota" in msg
-            # Auth errors (provider-specific phrasing)
-            or "api_key_invalid" in msg          # Gemini: reason=API_KEY_INVALID
-            or "api key not valid" in msg        # Gemini: 'API key not valid'
-            or "invalid api key" in msg          # generic
-            or "invalid_api_key" in msg          # generic snake_case
-            or "incorrect api key" in msg        # OpenAI phrasing
-            or "insufficient_quota" in msg       # OpenAI quota
-            or "permission denied" in msg        # GCP 403-style in 400 body
+            or "api_key_invalid" in msg
+            or "api key not valid" in msg
+            or "invalid api key" in msg
+            or "invalid_api_key" in msg
+            or "incorrect api key" in msg
+            or "insufficient_quota" in msg
+            or "permission denied" in msg
         )
 
     def _retry_delay(self, exc: BaseException, attempt: int) -> float:
@@ -167,20 +138,15 @@ class BaseAgent:
             )
             if retry_after:
                 try:
-                    return float(retry_after) + random.uniform(0, 2.0)
-                except (TypeError, ValueError):
-                    pass
+                    return float(retry_after) + random.uniform(0, LLM_RETRY_JITTER_SECONDS)
+                except (TypeError, ValueError) as exc:
+                    logger.warning("invalid_retry_after_header", retry_after=retry_after, error=str(exc), agent=self.agent_name)
 
         base = max(settings.llm_api_retry_base_seconds, 10.0)
         delay = min(base * (2 ** attempt), settings.llm_api_retry_max_seconds)
-        return delay + random.uniform(0, 5.0)
+        return delay + random.uniform(0, LLM_RETRY_MAX_JITTER_SECONDS)
 
     def _is_cb_countable_failure(self, exc: BaseException) -> bool:
-        """
-        Only transient infrastructure failures count toward the circuit breaker.
-        Auth errors (wrong API key, quota exhausted) are permanent config failures
-        and must NOT open the circuit — they should just trigger a provider switch.
-        """
         return self._is_transient_llm_error(exc)
 
     def _generate_content_with_retry(
@@ -190,7 +156,7 @@ class BaseAgent:
     ):
         self.budget.consume(self.agent_name)
 
-        # Check primary provider circuit breaker
+
         primary_cfg = self._provider_clients[0][0]
         cb = get_circuit_breaker(primary_cfg.name)
         if not cb.allow_request():
@@ -202,7 +168,7 @@ class BaseAgent:
         create_kwargs: dict[str, Any] = {
             "model": settings.llm_model,
             "messages": messages,
-            "max_tokens": 4096,
+            "max_tokens": LLM_COMPLETION_MAX_TOKENS,
         }
         if self.tools:
             create_kwargs["tools"] = self.tools
@@ -230,9 +196,6 @@ class BaseAgent:
                 )
                 time.sleep(delay)
 
-    # ------------------------------------------------------------------
-    # Structured output (instructor + Pydantic)
-    # ------------------------------------------------------------------
 
     def _run_structured(
         self,
@@ -242,13 +205,6 @@ class BaseAgent:
         max_retries: int = 2,
         phase_tool: str | None = None,
     ) -> tuple[BaseModel, dict]:
-        """
-        Single LLM call that returns (validated_pydantic_object, usage_info).
-        usage_info contains: prompt_tokens, completion_tokens, total_tokens, model, cost_usd.
-
-        If the model's output fails Pydantic validation, instructor automatically
-        sends the validation error back and retries up to max_retries times.
-        """
         self.budget.consume(self.agent_name)
 
         msgs: list[dict] = []
@@ -299,12 +255,12 @@ class BaseAgent:
                 error_snippet = str(exc)[:200]
 
                 if not is_fatal:
-                    # Non-fatal, non-transient (e.g. Pydantic validation failure from
-                    # instructor): no provider switch, just raise immediately.
+
+
                     self._log_structured(msgs, response_model.__name__, error=error_snippet)
                     raise
 
-                # Fatal provider error (auth, quota, circuit open) → log and try next.
+
                 self._log_structured(msgs, response_model.__name__, error=f"[{p_cfg.name}] {error_snippet}")
 
                 remaining = self._provider_clients[idx + 1:]
@@ -334,7 +290,7 @@ class BaseAgent:
                         success=False,
                         error=error_snippet,
                     )
-                    # Emit a LangSmith event for the switch if tracing is active.
+
                     try:
                         from langsmith import get_current_run_tree
                         run = get_current_run_tree()
@@ -343,8 +299,8 @@ class BaseAgent:
                                 "name": "provider_switch",
                                 "message": f"Switched from {p_cfg.name} to {next_name}: {error_snippet[:120]}",
                             })
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.warning("langsmith_provider_switch_event_failed", error=str(exc), agent=self.agent_name, job_id=self.job_id)
                 else:
                     logger.error(
                         "all_providers_exhausted",
@@ -356,11 +312,8 @@ class BaseAgent:
 
         if last_exc is None:
             last_exc = CircuitOpenError("All LLM providers unavailable (circuits open)")
-        raise last_exc  # type: ignore[misc]
+        raise last_exc
 
-    # ------------------------------------------------------------------
-    # Agentic loop
-    # ------------------------------------------------------------------
 
     def _run_loop(
         self,
@@ -370,10 +323,6 @@ class BaseAgent:
         force_tool_first: bool = False,
         force_json_on_completion: bool = False,
     ):
-        """
-        Core agentic loop. Runs until there are no tool_calls in the response
-        or max_iterations is reached.
-        """
         msgs: list[dict] = []
         if system:
             msgs.append({"role": "system", "content": system})
@@ -442,8 +391,8 @@ class BaseAgent:
                     data = json.loads(result_msg["content"])
                     if any(isinstance(v, list) and len(v) > 0 for v in data.values()):
                         all_empty = False
-                except (json.JSONDecodeError, AttributeError, TypeError):
-                    pass
+                except (json.JSONDecodeError, AttributeError, TypeError) as exc:
+                    logger.warning("tool_result_parse_failed", tool=tc.function.name, error=str(exc), agent=self.agent_name)
 
             msgs.extend(result_msgs)
 
@@ -465,9 +414,6 @@ class BaseAgent:
 
         return response
 
-    # ------------------------------------------------------------------
-    # Tool dispatch with retry
-    # ------------------------------------------------------------------
 
     def _execute_tool_with_retry(self, name: str, inputs: dict, tool_call_id: str) -> dict:
         attempt = 0
@@ -524,7 +470,7 @@ class BaseAgent:
                     agent=self.agent_name,
                 )
                 if attempt < settings.max_tool_retries:
-                    time.sleep(min(2 ** attempt + random.uniform(0, 1.0), 30))
+                    time.sleep(min(2 ** attempt + random.uniform(0, 1.0), TOOL_RETRY_MAX_SLEEP_SECONDS))
 
         return {
             "role": "tool",
@@ -532,9 +478,6 @@ class BaseAgent:
             "content": json.dumps({"error": str(last_error)}),
         }
 
-    # ------------------------------------------------------------------
-    # LLM conversation logger
-    # ------------------------------------------------------------------
 
     def _log_llm(self, iteration: int, msgs: list[dict], response) -> None:
         try:
@@ -553,7 +496,7 @@ class BaseAgent:
                     tool_calls = m.get("tool_calls", [])
                     if role == "TOOL":
                         tool_id = m.get("tool_call_id", "")
-                        preview = content[:300] + ("…" if len(content) > 300 else "")
+                        preview = content[:TOOL_PREVIEW_CHARS] + ("…" if len(content) > TOOL_PREVIEW_CHARS else "")
                         f.write(f"[TOOL result id={tool_id}]\n{preview}\n\n")
                     elif tool_calls:
                         f.write(f"[ASSISTANT - called tools]\n")
@@ -562,7 +505,7 @@ class BaseAgent:
                             f.write(f"  → {fn.get('name')}({fn.get('arguments', '')})\n")
                         f.write("\n")
                     else:
-                        preview = str(content)[:600] + ("…" if len(str(content)) > 600 else "")
+                        preview = str(content)[:TRACE_PREVIEW_CHARS] + ("…" if len(str(content)) > TRACE_PREVIEW_CHARS else "")
                         f.write(f"[{role}]\n{preview}\n\n")
                 f.write("--- RESPONSE ---\n")
                 if msg.tool_calls:
@@ -571,11 +514,11 @@ class BaseAgent:
                         f.write(f"  → {tc.function.name}({tc.function.arguments})\n")
                 else:
                     text = (msg.content or "")
-                    preview = text[:800] + ("…" if len(text) > 800 else "")
+                    preview = text[:STRUCTURED_PREVIEW_CHARS] + ("…" if len(text) > STRUCTURED_PREVIEW_CHARS else "")
                     f.write(f"[ASSISTANT - text]\n{preview}\n")
                 f.write("\n")
-        except Exception:
-            pass
+        except OSError as exc:
+            logger.warning("llm_log_write_failed", error=str(exc), agent=self.agent_name, job_id=self.job_id)
 
     def _log_structured(
         self,
@@ -595,22 +538,19 @@ class BaseAgent:
                 for m in msgs:
                     role = m.get("role", "?").upper()
                     content = str(m.get("content") or "")
-                    preview = content[:600] + ("…" if len(content) > 600 else "")
+                    preview = content[:TRACE_PREVIEW_CHARS] + ("…" if len(content) > TRACE_PREVIEW_CHARS else "")
                     f.write(f"[{role}]\n{preview}\n\n")
                 f.write("--- RESPONSE ---\n")
                 if error:
                     f.write(f"[ERROR] {error[:400]}\n")
                 elif result is not None:
                     text = result.model_dump_json()
-                    preview = text[:800] + ("…" if len(text) > 800 else "")
+                    preview = text[:STRUCTURED_PREVIEW_CHARS] + ("…" if len(text) > STRUCTURED_PREVIEW_CHARS else "")
                     f.write(f"[{model_name}]\n{preview}\n")
                 f.write("\n")
-        except Exception:
-            pass
+        except OSError as exc:
+            logger.warning("structured_llm_log_write_failed", error=str(exc), agent=self.agent_name, job_id=self.job_id)
 
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
 
     def _extract_text(self, response) -> str:
         try:

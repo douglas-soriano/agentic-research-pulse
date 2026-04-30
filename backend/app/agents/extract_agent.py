@@ -1,11 +1,3 @@
-"""
-ExtractAgent — extracts structured claims from a paper.
-
-Python controls chunk_ids entirely:
-  1. semantic_search is called in Python (not via tool) to get real chunks.
-  2. The LLM is given the chunks by index and asked only to write claim text.
-  3. Python maps each index back to the real chunk_id.
-"""
 import json
 import time
 
@@ -63,7 +55,7 @@ class ExtractAgent(BaseAgent):
             paper_id=paper.id,
             paper_title=paper.title,
         ):
-            # Step 1: fetch chunks from ChromaDB
+
             t0 = time.monotonic()
             chunks = self._fetch_chunks(paper)
             self.trace.record_step(
@@ -81,7 +73,7 @@ class ExtractAgent(BaseAgent):
                 bound_log.info("no_chunks", step="semantic_search")
                 return []
 
-            # Step 2: ask LLM to write claim text only
+
             chunks_payload = [
                 {"index": i, "text": c["text"][:600]}
                 for i, c in enumerate(chunks)

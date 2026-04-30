@@ -1,16 +1,8 @@
-"""
-Pydantic schemas for structured LLM outputs.
-
-Used with the `instructor` library so that when a model returns invalid JSON
-or a schema mismatch, the validation error is automatically fed back to the LLM
-with a corrective prompt — up to max_retries times — before raising.
-"""
 from typing import Literal
 from pydantic import BaseModel, field_validator
 
 
 class QueryPlan(BaseModel):
-    """SearchAgent: 3 diverse arXiv search queries for a topic."""
     queries: list[str]
 
     @field_validator("queries")
@@ -34,7 +26,6 @@ class QueryPlan(BaseModel):
 
 
 class ClaimItem(BaseModel):
-    """One extracted claim from a paper chunk."""
     index: int
     text: str
     category: Literal["finding", "method", "limitation", "contribution"]
@@ -42,12 +33,10 @@ class ClaimItem(BaseModel):
 
 
 class ClaimsOutput(BaseModel):
-    """ExtractAgent: list of claims extracted from a paper's chunks."""
     claims: list[ClaimItem]
 
 
 class SynthesisOutput(BaseModel):
-    """SynthesisAgent: final synthesis text with inline [citation_XXXX] tokens."""
     synthesis: str
 
     @field_validator("synthesis")

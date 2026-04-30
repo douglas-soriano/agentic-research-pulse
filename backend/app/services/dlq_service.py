@@ -1,10 +1,3 @@
-"""
-Dead Letter Queue backed by Redis.
-
-Failed jobs are stored as:
-  researchpulse:dlq:entry:{job_id}  → hash  (job_id, error_message, failed_at, attempt_count, payload)
-  researchpulse:dlq:index           → sorted set (score=unix_ts, member=job_id)
-"""
 import json
 import time
 from datetime import datetime, timezone
@@ -12,6 +5,7 @@ from datetime import datetime, timezone
 import structlog
 
 from app.config import settings
+from app.exceptions import DataStoreError
 
 logger = structlog.get_logger(__name__)
 
@@ -51,6 +45,7 @@ class DlqService:
             )
         except Exception as exc:
             logger.error("dlq_push_failed", job_id=job_id, error=str(exc))
+            raise DataStoreError(f"Could not push job {job_id} to DLQ") from exc
 
     def list_entries(self, limit: int = 50) -> list[dict]:
         try:
@@ -58,24 +53,24 @@ class DlqService:
             job_ids = r.zrevrange(_INDEX_KEY, 0, limit - 1)
             entries = []
             for job_id in job_ids:
-                data = r.hgetall(f"{_ENTRY_PREFIX}{job_id}")
-                if data:
-                    entries.append(_parse_entry(data))
+                entry_payload = r.hgetall(f"{_ENTRY_PREFIX}{job_id}")
+                if entry_payload:
+                    entries.append(_parse_entry(entry_payload))
             return entries
         except Exception as exc:
             logger.error("dlq_list_failed", error=str(exc))
-            return []
+            raise DataStoreError("Could not list DLQ entries") from exc
 
     def get_entry(self, job_id: str) -> dict | None:
         try:
             r = _redis()
-            data = r.hgetall(f"{_ENTRY_PREFIX}{job_id}")
-            if not data:
+            entry_payload = r.hgetall(f"{_ENTRY_PREFIX}{job_id}")
+            if not entry_payload:
                 return None
-            return _parse_entry(data)
+            return _parse_entry(entry_payload)
         except Exception as exc:
             logger.error("dlq_get_failed", job_id=job_id, error=str(exc))
-            return None
+            raise DataStoreError(f"Could not read DLQ entry {job_id}") from exc
 
     def remove(self, job_id: str) -> None:
         try:
@@ -84,21 +79,24 @@ class DlqService:
             r.zrem(_INDEX_KEY, job_id)
         except Exception as exc:
             logger.error("dlq_remove_failed", job_id=job_id, error=str(exc))
+            raise DataStoreError(f"Could not remove DLQ entry {job_id}") from exc
 
     def count(self) -> int:
         try:
             return _redis().zcard(_INDEX_KEY) or 0
-        except Exception:
-            return 0
+        except Exception as exc:
+            logger.error("dlq_count_failed", error=str(exc))
+            raise DataStoreError("Could not count DLQ entries") from exc
 
 
-def _parse_entry(data: dict) -> dict:
-    entry = dict(data)
+def _parse_entry(entry_payload: dict) -> dict:
+    entry = dict(entry_payload)
     entry["attempt_count"] = int(entry.get("attempt_count", 0))
     raw_payload = entry.pop("payload", "{}")
     try:
         entry["original_payload"] = json.loads(raw_payload)
-    except Exception:
+    except json.JSONDecodeError as exc:
+        logger.warning("dlq_payload_decode_failed", job_id=entry.get("job_id"), error=str(exc))
         entry["original_payload"] = {}
     return entry
 

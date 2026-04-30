@@ -1,8 +1,3 @@
-"""
-Celery application factory.
-Imported by workers, beat scheduler, and Flower.
-Jobs import from here to avoid circular imports.
-"""
 from celery import Celery
 from celery.schedules import crontab
 

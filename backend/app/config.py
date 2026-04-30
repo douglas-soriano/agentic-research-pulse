@@ -24,16 +24,16 @@ class ProviderConfig:
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    # Set LLM_PROVIDER=gemini (default) or LLM_PROVIDER=local in .env
+
     llm_provider: str = "gemini"
     gemini_api_key: str = ""
 
-    # Second cloud step in the chain (Gemini → ChatGPT → local) when OPENAI_API_KEY is set
+
     openai_api_key: str = ""
     openai_base_url: str = ""
     openai_model: str = ""
 
-    # Resolved by the validator below — do not set these manually when using a provider
+
     llm_base_url: str = ""
     llm_api_key: str = ""
     llm_model: str = ""
@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     chroma_port: int = 8000
     database_url: str = "sqlite:////data/researchpulse.db"
 
-    # Agent config
+
     max_papers_per_topic: int = 5
     chunk_size_tokens: int = 512
     chunk_overlap_tokens: int = 64
@@ -58,9 +58,6 @@ class Settings(BaseSettings):
     max_llm_calls_per_job: int = 60
 
     def get_provider_chain(self) -> list[ProviderConfig]:
-        """Provider order when LLM_PROVIDER=gemini:
-        Gemini → OpenAI (ChatGPT-compatible API) → local Ollama, if keys are set.
-        Without OPENAI_API_KEY, chain is Gemini → local."""
         primary = ProviderConfig(
             base_url=self.llm_base_url,
             api_key=self.llm_api_key,

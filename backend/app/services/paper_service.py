@@ -1,12 +1,9 @@
-"""
-PaperService — orchestrates single-paper ingestion:
-fetch full text → store in DB → chunk + embed → mark embedded.
-"""
 from datetime import datetime
 
 import structlog
 
 from app.database import get_session
+from app.exceptions import ExternalServiceError
 from app.models.paper import Paper, PaperCreate
 from app.repositories.paper_repository import PaperRepository
 from app.services.embedding_service import EmbeddingService
@@ -20,13 +17,6 @@ class PaperService:
         self.embedding_service = EmbeddingService()
 
     def ingest(self, paper_meta: dict, topic_id: str) -> Paper:
-        """
-        Full ingestion pipeline for one paper:
-        1. Persist metadata (idempotent — skip if already exists)
-        2. Fetch full text
-        3. Chunk + embed into ChromaDB
-        4. Mark embedded in DB
-        """
         with get_session() as session:
             repo = PaperRepository(session)
             existing = repo.get_by_arxiv_id(paper_meta["arxiv_id"])
@@ -48,14 +38,16 @@ class PaperService:
             else:
                 paper = existing
 
-        # Fetch full text outside the session (network call).
-        # DOI-based IDs (from OpenAlex journal papers) start with "10." —
-        # they have no arXiv preprint, so we skip the fetch and use the abstract.
+
         if paper.arxiv_id.startswith("10."):
             full_text = paper.abstract or ""
         else:
-            result = fetch_paper(paper.arxiv_id)
-            full_text = result.get("text", paper.abstract)
+            try:
+                fetched_paper = fetch_paper(paper.arxiv_id)
+                full_text = fetched_paper.get("text", paper.abstract)
+            except ExternalServiceError as exc:
+                logger.warning("paper_fetch_failed", arxiv_id=paper.arxiv_id, error=str(exc))
+                full_text = paper.abstract
         if not full_text:
             full_text = paper.abstract
 
@@ -63,7 +55,7 @@ class PaperService:
             repo = PaperRepository(session)
             repo.update_full_text(paper.id, full_text)
 
-        # Chunk + embed
+
         chunk_count = self.embedding_service.chunk_and_embed(
             paper_id=paper.id,
             arxiv_id=paper.arxiv_id,

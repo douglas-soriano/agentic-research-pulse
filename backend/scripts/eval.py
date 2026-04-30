@@ -1,43 +1,21 @@
-"""
-RAGAS evaluation script for ResearchPulse.
-
-Strategy:
-  1. Run the pipeline ONCE with topic "retrieval augmented generation".
-  2. Use the synthesis as the answer for each golden question.
-  3. Retrieve question-specific contexts via semantic_search in ChromaDB.
-  4. Run ragas.evaluate() with faithfulness + context_recall (+ answer_relevancy
-     when using a cloud provider that supports embeddings).
-
-Exits with code 1 if faithfulness < 0.7 or if the pipeline produced no synthesis.
-
-Local Ollama usage:
-    Add to .env:
-        LLM_PROVIDER=local
-        LLM_BASE_URL=http://localhost:11434/v1   # host.docker.internal won't resolve outside Docker
-
-Usage:
-    cd backend
-    python scripts/eval.py
-"""
 import math
 import os
 import socket
 import sys
 import uuid
 import warnings
-from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.config import settings
+from app.utils.time import utc_now
 
 FAITHFULNESS_THRESHOLD = 0.7
 PIPELINE_TOPIC = "retrieval augmented generation"
 IS_LOCAL = settings.llm_provider == "local"
 
-# Model used by RAGAS to score (may differ from the pipeline model).
-# For local Ollama, llama3 follows JSON instructions more reliably than smaller models.
+
 RAGAS_MODEL = os.environ.get(
     "RAGAS_LLM_MODEL",
     "llama3" if IS_LOCAL else settings.llm_model,
@@ -70,13 +48,12 @@ GOLDEN_QUESTIONS = [
 
 
 def _effective_llm_base_url() -> str:
-    """Replace host.docker.internal with localhost when running outside a Docker container."""
     url = settings.llm_base_url
     if "host.docker.internal" not in url:
         return url
     try:
         socket.getaddrinfo("host.docker.internal", 80, timeout=1)
-        return url  # resolvable — we're inside Docker or on Windows host
+        return url
     except (socket.gaierror, OSError):
         return url.replace("host.docker.internal", "localhost")
 
@@ -102,8 +79,8 @@ def _run_pipeline(topic_id: str) -> dict:
     from unittest.mock import patch, MagicMock
 
     job_id = str(uuid.uuid4())
-    with patch("app.agents.orchestrator.stream_service", MagicMock()), \
-         patch("app.agents.orchestrator.agent_trace") as mock_trace, \
+    with patch("app.agents.orchestrator.stream_service", MagicMock()),\
+         patch("app.agents.orchestrator.agent_trace") as mock_trace,\
          patch("app.agents.orchestrator.init_llm_log"):
         mock_trace.return_value.__enter__ = lambda s: s
         mock_trace.return_value.__exit__ = MagicMock(return_value=False)
@@ -151,7 +128,7 @@ def main() -> None:
 
         topic_id = str(uuid.uuid4())
         with get_session() as session:
-            session.add(TopicRow(id=topic_id, name=PIPELINE_TOPIC, created_at=datetime.utcnow()))
+            session.add(TopicRow(id=topic_id, name=PIPELINE_TOPIC, created_at=utc_now()))
             session.commit()
 
         print(f"\nRunning pipeline for topic: '{PIPELINE_TOPIC}'...")
@@ -202,7 +179,6 @@ def main() -> None:
 
 
 def _eval_local(pipeline_result: dict, rows: list[dict]) -> None:
-    """Pipeline quality checks for local Ollama — no RAGAS (local models don't produce reliable JSON)."""
     import re
 
     print("\n" + "=" * 60)
@@ -235,7 +211,6 @@ def _eval_local(pipeline_result: dict, rows: list[dict]) -> None:
 
 
 def _eval_ragas(rows: list[dict]) -> None:
-    """Full RAGAS evaluation for cloud providers."""
     print(f"\nEvaluating {len(rows)} sample(s) with RAGAS (model: {RAGAS_MODEL})...")
 
     try:
@@ -260,10 +235,10 @@ def _eval_ragas(rows: list[dict]) -> None:
         api_key=settings.llm_api_key,
         openai_api_base=llm_url,
     )
-    faithfulness.llm = ragas_llm            # type: ignore[attr-defined]
-    context_recall.llm = ragas_llm          # type: ignore[attr-defined]
-    answer_relevancy.llm = ragas_llm        # type: ignore[attr-defined]
-    answer_relevancy.embeddings = ragas_embeddings  # type: ignore[attr-defined]
+    faithfulness.llm = ragas_llm
+    context_recall.llm = ragas_llm
+    answer_relevancy.llm = ragas_llm
+    answer_relevancy.embeddings = ragas_embeddings
 
     dataset = Dataset.from_dict({
         "question":     [r["question"]     for r in rows],

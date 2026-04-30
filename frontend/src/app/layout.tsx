@@ -16,7 +16,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif",
         minHeight: "100vh",
       }}>
-        {/* Sticky frosted header */}
+        {}
         <header style={{
           position: "sticky", top: 0, zIndex: 100,
           background: "rgba(247,247,245,0.85)",
@@ -31,7 +31,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             maxWidth: 780, margin: "0 auto", width: "100%",
             display: "flex", alignItems: "center", gap: "0.625rem",
           }}>
-            {/* Logo mark */}
+            {}
             <div style={{
               width: 26, height: 26, borderRadius: 7,
               background: "linear-gradient(135deg, #ff6b00 0%, #ff9f0a 100%)",
@@ -53,7 +53,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </div>
         </header>
 
-        {/* Page content */}
+        {}
         <div style={{ maxWidth: 780, margin: "0 auto", padding: "2.25rem 1.5rem 4rem" }}>
           {children}
         </div>

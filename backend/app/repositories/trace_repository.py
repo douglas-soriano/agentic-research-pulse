@@ -1,10 +1,12 @@
 import json
-from datetime import datetime
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import TraceRow
+from app.models.metrics import Metrics
 from app.models.trace import Trace, TraceCreate, TraceStep
+from app.utils.time import utc_now
 
 
 class TraceRepository:
@@ -12,15 +14,14 @@ class TraceRepository:
         self.session = session
 
     def create(self, data: TraceCreate) -> Trace:
-        # Idempotent: Celery may retry the task with the same job_id.
-        # If a trace already exists, reset it to "running" rather than crashing
-        # on the UNIQUE constraint.
+
+
         import uuid
         existing = self.session.query(TraceRow).filter_by(job_id=data.job_id).first()
         if existing:
             existing.status = "running"
             existing.completed_at = None
-            # Keep previous steps so the trace shows all attempts end-to-end
+
             self.session.commit()
             return self._to_model(existing)
 
@@ -54,7 +55,7 @@ class TraceRepository:
         if not row:
             return
         row.status = "completed"
-        row.completed_at = datetime.utcnow()
+        row.completed_at = utc_now()
         row.total_duration_ms = stats.get("total_duration_ms", 0)
         row.papers_processed = stats.get("papers_processed", 0)
         row.claims_extracted = stats.get("claims_extracted", 0)
@@ -67,12 +68,12 @@ class TraceRepository:
         if not row:
             return
         row.status = "failed"
-        row.completed_at = datetime.utcnow()
-        # Append an error step
+        row.completed_at = utc_now()
+
         steps = json.loads(row.steps)
         steps.append({"agent": "system", "tool": None, "input": {}, "output": {"error": error},
                       "duration_ms": 0, "success": False, "error": error,
-                      "timestamp": datetime.utcnow().isoformat()})
+                      "timestamp": utc_now().isoformat()})
         row.steps = json.dumps(steps)
         self.session.commit()
 
@@ -85,11 +86,58 @@ class TraceRepository:
         )
         return [self._to_model(r) for r in rows]
 
+    def latest_job_ids_by_topic(self, topic_names: list[str]) -> dict[str, str]:
+        if not topic_names:
+            return {}
+        rows = (
+            self.session.query(TraceRow.topic, TraceRow.job_id)
+            .filter(TraceRow.topic.in_(topic_names))
+            .order_by(TraceRow.created_at.desc())
+            .all()
+        )
+        latest_job_ids: dict[str, str] = {}
+        for topic_name, job_id in rows:
+            if topic_name not in latest_job_ids:
+                latest_job_ids[topic_name] = job_id
+        return latest_job_ids
+
+    def metrics(self) -> Metrics:
+        total_jobs = self.session.query(func.count(TraceRow.id)).scalar() or 0
+        failed_jobs = (
+            self.session.query(func.count(TraceRow.id))
+            .filter(TraceRow.status == "failed")
+            .scalar() or 0
+        )
+        duration_rows = (
+            self.session.query(TraceRow.total_duration_ms)
+            .filter(TraceRow.status == "completed")
+            .order_by(TraceRow.created_at.desc())
+            .limit(100)
+            .all()
+        )
+        durations = [row[0] for row in duration_rows if row[0] is not None]
+        average_duration = sum(durations) / len(durations) if durations else 0.0
+        citation_totals = self.session.query(
+            func.sum(TraceRow.citations_verified),
+            func.sum(TraceRow.citations_rejected),
+        ).filter(TraceRow.status == "completed").first()
+        verified_citations = int(citation_totals[0] or 0)
+        rejected_citations = int(citation_totals[1] or 0)
+        total_citations = verified_citations + rejected_citations
+        correctness_rate = verified_citations / total_citations if total_citations > 0 else 0.0
+        error_rate = failed_jobs / total_jobs if total_jobs > 0 else 0.0
+        return Metrics(
+            total_jobs_processed=total_jobs,
+            average_duration_ms=round(average_duration, 2),
+            citation_correctness_rate=round(correctness_rate, 4),
+            error_rate=round(error_rate, 4),
+        )
+
     def _to_model(self, row: TraceRow) -> Trace:
         steps_raw = json.loads(row.steps)
         steps = []
         for s in steps_raw:
-            # Pydantic v2 tolerates extra keys, but timestamp may be a string
+
             steps.append(TraceStep(**s))
         return Trace(
             id=row.id,

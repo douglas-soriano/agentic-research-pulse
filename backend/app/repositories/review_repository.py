@@ -1,11 +1,11 @@
 import json
 import uuid
-from datetime import datetime
 
 from sqlalchemy.orm import Session
 
 from app.database import ReviewRow
 from app.models.review import Review, ReviewCreate, CitedPaper
+from app.utils.time import utc_now
 
 
 class ReviewRepository:
@@ -67,7 +67,7 @@ class ReviewRepository:
         row.citations = json.dumps(citations)
         row.cited_papers = json.dumps([p.model_dump() for p in cited_papers])
         row.version += 1
-        row.updated_at = datetime.utcnow()
+        row.updated_at = utc_now()
         row.papers_processed = stats.get("papers_processed", row.papers_processed)
         row.claims_extracted = stats.get("claims_extracted", row.claims_extracted)
         row.citations_verified = stats.get("citations_verified", row.citations_verified)

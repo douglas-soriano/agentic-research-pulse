@@ -2,6 +2,8 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 import uuid
 
+from app.utils.time import utc_now
+
 
 class Paper(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -14,7 +16,7 @@ class Paper(BaseModel):
     full_text: str | None = None
     chunk_count: int = 0
     embedded: bool = False
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
 
 
 class PaperCreate(BaseModel):

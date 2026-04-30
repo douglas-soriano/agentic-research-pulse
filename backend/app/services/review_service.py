@@ -1,6 +1,3 @@
-"""
-ReviewService — persists and retrieves living reviews.
-"""
 from app.database import get_session
 from app.models.review import Review, ReviewCreate, CitedPaper
 from app.repositories.review_repository import ReviewRepository

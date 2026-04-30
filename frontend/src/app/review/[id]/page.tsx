@@ -20,7 +20,7 @@ const C = {
   danger:  "#e45b5b",
 } as const;
 
-// ── Types ──────────────────────────────────────────────────────────────────
+
 interface CitationEntry {
   paper_id: string;
   arxiv_id: string;
@@ -52,7 +52,7 @@ interface Review {
   updated_at:          string;
 }
 
-// ── Citation badge with hover tooltip ─────────────────────────────────────
+
 function CitationBadge({
   token, entry,
 }: {
@@ -126,7 +126,7 @@ function CitationBadge({
   );
 }
 
-// ── Synthesis text with inline citation badges ─────────────────────────────
+
 function SynthesisText({
   text, citations,
 }: {
@@ -145,7 +145,7 @@ function SynthesisText({
   );
 }
 
-// ── Page ───────────────────────────────────────────────────────────────────
+
 export default function ReviewPage({ params }: { params: { id: string } }) {
   const [review,   setReview]   = useState<Review | null>(null);
   const [loading,  setLoading]  = useState(true);
@@ -172,7 +172,7 @@ export default function ReviewPage({ params }: { params: { id: string } }) {
     return () => { cancelled = true; clearInterval(interval); };
   }, [params.id]);
 
-  // ── Loading ──────────────────────────────────────────────────────────────
+
   if (loading) {
     return (
       <div style={{ display: "flex", alignItems: "center", gap: "0.625rem", color: C.textSec, fontSize: "0.9rem", marginTop: "3rem", justifyContent: "center" }}>
@@ -181,7 +181,7 @@ export default function ReviewPage({ params }: { params: { id: string } }) {
     );
   }
 
-  // ── Not found ────────────────────────────────────────────────────────────
+
   if (notFound) {
     return (
       <div style={{
@@ -206,7 +206,7 @@ export default function ReviewPage({ params }: { params: { id: string } }) {
 
   return (
     <main>
-      {/* ── Back nav ────────────────────────────────────────────────── */}
+      {}
       <Link href="/" style={{
         color: C.textMut, fontSize: "0.8rem", textDecoration: "none",
         display: "inline-block", marginBottom: "1rem",
@@ -214,7 +214,7 @@ export default function ReviewPage({ params }: { params: { id: string } }) {
         ← Back
       </Link>
 
-      {/* ── Report header ───────────────────────────────────────────── */}
+      {}
       <h2 style={{
         margin: "0 0 0.75rem",
         fontSize: "1.5rem", fontWeight: 700, letterSpacing: "-0.02em",
@@ -223,7 +223,7 @@ export default function ReviewPage({ params }: { params: { id: string } }) {
         {review.topic_name}
       </h2>
 
-      {/* Stats row */}
+      {}
       <div style={{ display: "flex", gap: "1.25rem", flexWrap: "wrap", marginBottom: "0.625rem" }}>
         {[
           { value: review.papers_processed,  label: "papers",    color: C.info    },
@@ -243,7 +243,7 @@ export default function ReviewPage({ params }: { params: { id: string } }) {
         {updated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
       </p>
 
-      {/* ── Synthesis ───────────────────────────────────────────────── */}
+      {}
       <section style={{ marginBottom: "2rem" }}>
         <SectionLabel>Synthesis</SectionLabel>
 
@@ -265,7 +265,7 @@ export default function ReviewPage({ params }: { params: { id: string } }) {
         </p>
       </section>
 
-      {/* ── Cited sources ────────────────────────────────────────────── */}
+      {}
       {review.cited_papers.length > 0 && (
         <section>
           <SectionLabel>Sources ({review.cited_papers.length})</SectionLabel>
@@ -280,7 +280,7 @@ export default function ReviewPage({ params }: { params: { id: string } }) {
                 borderRadius: 12,
                 boxShadow: "0 1px 4px rgba(0,0,0,0.03)",
               }}>
-                {/* Number */}
+                {}
                 <span style={{
                   width: 24, height: 24, borderRadius: "50%",
                   background: "#f0f0ee", border: "1px solid rgba(0,0,0,0.08)",
@@ -291,7 +291,7 @@ export default function ReviewPage({ params }: { params: { id: string } }) {
                   {i + 1}
                 </span>
 
-                {/* Info */}
+                {}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <a
                     href={`https://arxiv.org/abs/${p.arxiv_id}`}
@@ -311,7 +311,7 @@ export default function ReviewPage({ params }: { params: { id: string } }) {
                   </p>
                 </div>
 
-                {/* Passage count */}
+                {}
                 <span style={{
                   padding: "0.2rem 0.55rem",
                   background: "#f5f5f3",
@@ -331,7 +331,7 @@ export default function ReviewPage({ params }: { params: { id: string } }) {
   );
 }
 
-// ── Section label ──────────────────────────────────────────────────────────
+
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <div style={{

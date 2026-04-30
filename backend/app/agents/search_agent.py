@@ -1,23 +1,8 @@
-"""
-SearchAgent — finds relevant papers for a topic across multiple providers.
-
-Architecture (three-phase, no LLM tool loop):
-  Phase 1 — Query planning (1 LLM call):
-    The model receives the topic and returns 3 diverse search queries.
-
-  Phase 2 — Multi-provider search (0 LLM calls):
-    Queries run in parallel within each provider.
-    Providers run sequentially: arXiv → OpenAlex.
-
-  Phase 3 — Relevance ranking (0 LLM calls):
-    All candidates are merged, deduplicated by arXiv ID, and scored.
-"""
 import math
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable
-
 
 
 import structlog
@@ -28,12 +13,13 @@ from app.models.agent_outputs import QueryPlan
 from app.observability.langsmith import agent_trace
 from app.tools.arxiv_tools import search_arxiv
 from app.tools.openalex_tools import search_openalex
+from app.tools.semantic_scholar_tools import search_semantic_scholar
 
 logger = structlog.get_logger(__name__)
 
 QUERY_SYSTEM = """You are a scientific literature search specialist.
 
-Given a research topic, produce 3 diverse arXiv search queries that cover different angles:
+Given a research topic, produce 3 diverse scientific literature search queries that cover different angles:
 - Query 1: core methodology / algorithms / techniques
 - Query 2: application domains / use cases / systems
 - Query 3: evaluation / benchmarks / surveys / limitations
@@ -53,17 +39,14 @@ CRITICAL RULES — violating any of these will cause the search to fail:
 
 _FETCH_PER_QUERY = 8
 
-# Hard cap on unique search queries sent to each provider.
-# Prevents runaway loop and keeps API costs predictable.
+
 _MAX_QUERIES = 3
 
-# Quality threshold: if we have at least this many unique papers from the
-# first provider, skip the remaining providers entirely.
-_QUALITY_THRESHOLD_PAPERS = 3
 
 _PROVIDERS: list[tuple[Callable, str, str]] = [
-    (search_arxiv,    "arxiv_search",    "arXiv"),
-    (search_openalex, "openalex_search", "OpenAlex"),
+    (search_arxiv,             "arxiv_search",             "arXiv"),
+    (search_openalex,          "openalex_search",          "OpenAlex"),
+    (search_semantic_scholar,  "semantic_scholar_search",  "Semantic Scholar"),
 ]
 
 
@@ -80,14 +63,14 @@ class SearchAgent(BaseAgent):
         bound_log = logger.bind(job_id=self.job_id, agent_name=self.agent_name)
 
         with agent_trace("search_agent", run_type="chain", job_id=self.job_id, topic=topic):
-            # Phase 1: query planning — cap at _MAX_QUERIES total
+
             t0 = time.monotonic()
             llm_queries = self._plan_queries(topic)
 
             raw_queries: list[str] = [topic] + [
                 q for q in llm_queries if q.lower() != topic.lower()
             ]
-            # Hard cap: never send more than _MAX_QUERIES to any provider.
+
             queries = raw_queries[:_MAX_QUERIES]
 
             self.trace.record_step(
@@ -101,57 +84,37 @@ class SearchAgent(BaseAgent):
             )
             bound_log.info("queries_planned", queries=queries, query_count=len(queries), step="plan_queries")
 
-            # Phase 2: sequential provider search with quality-based early exit.
-            # Providers are tried in order; if the first provider already yields
-            # enough unique papers we skip the rest entirely.
-            all_candidates: list[dict] = []
-            provider_counts: dict[str, int] = {}
 
-            for provider_fn, tool_name, display_name in _PROVIDERS:
-                t = time.monotonic()
-                papers, per_query = self._search_provider_queries(
-                    provider_fn, queries, _FETCH_PER_QUERY
-                )
-                ms = int((time.monotonic() - t) * 1000)
+            provider_counts: dict[str, int] = {}
+            provider_results = self._search_all_providers(queries, _FETCH_PER_QUERY)
+            all_candidates = []
+
+            for provider_result in provider_results:
+                papers = provider_result["papers"]
+                provider_counts[provider_result["display_name"]] = len(papers)
                 all_candidates.extend(papers)
-                provider_counts[display_name] = len(papers)
 
                 self.trace.record_step(
                     job_id=self.job_id,
                     agent=self.agent_name,
-                    tool=tool_name,
+                    tool=provider_result["tool_name"],
                     input_data={"queries": queries, "n_per_query": _FETCH_PER_QUERY},
                     output_data={
                         "papers_found": len(papers),
-                        "per_query": per_query,
-                        "provider": display_name,
+                        "per_query": provider_result["per_query"],
+                        "provider": provider_result["display_name"],
                     },
-                    duration_ms=ms,
+                    duration_ms=provider_result["duration_ms"],
                     success=True,
                 )
                 bound_log.info(
                     "provider_search_done",
-                    provider=display_name,
+                    provider=provider_result["display_name"],
                     papers_found=len(papers),
-                    duration_ms=ms,
-                    step=tool_name,
+                    duration_ms=provider_result["duration_ms"],
+                    step=provider_result["tool_name"],
                 )
 
-                # Quality-based early exit: enough unique papers found → stop.
-                unique_so_far = len({
-                    re.sub(r'v\d+$', '', p.get("arxiv_id", ""))
-                    for p in all_candidates if p.get("arxiv_id")
-                })
-                if unique_so_far >= _QUALITY_THRESHOLD_PAPERS:
-                    bound_log.info(
-                        "early_exit_quality_met",
-                        unique_papers=unique_so_far,
-                        threshold=_QUALITY_THRESHOLD_PAPERS,
-                        providers_skipped=len(_PROVIDERS) - list(p[2] for p in _PROVIDERS).index(display_name) - 1,
-                    )
-                    break
-
-            # Phase 3: dedup + relevance ranking
             t2 = time.monotonic()
             unique_ids = len({
                 re.sub(r'v\d+$', '', p.get("arxiv_id", ""))
@@ -161,14 +124,14 @@ class SearchAgent(BaseAgent):
 
             cross_provider = 0
             if selected:
-                aid_occurrences: dict[str, int] = {}
+                provider_sources_by_paper: dict[str, set[str]] = {}
                 for p in all_candidates:
                     aid = re.sub(r'v\d+$', '', p.get("arxiv_id", ""))
                     if aid:
-                        aid_occurrences[aid] = aid_occurrences.get(aid, 0) + 1
+                        provider_sources_by_paper.setdefault(aid, set()).add(p.get("source", "unknown"))
                 cross_provider = sum(
                     1 for p in selected
-                    if aid_occurrences.get(re.sub(r'v\d+$', '', p.get("arxiv_id", "")), 1) > 1
+                    if len(provider_sources_by_paper.get(re.sub(r'v\d+$', '', p.get("arxiv_id", "")), set())) > 1
                 )
 
             self.trace.record_step(
@@ -206,9 +169,6 @@ class SearchAgent(BaseAgent):
 
             return selected
 
-    # ------------------------------------------------------------------
-    # Phase 1 — query planning
-    # ------------------------------------------------------------------
 
     def _plan_queries(self, topic: str) -> list[str]:
         try:
@@ -216,7 +176,7 @@ class SearchAgent(BaseAgent):
                 QueryPlan,
                 messages=[{
                     "role": "user",
-                    "content": f"Topic: {topic}\n\nGenerate 3 diverse arXiv search queries. Return JSON only.",
+                    "content": f"Topic: {topic}\n\nGenerate 3 diverse scientific literature search queries. Return JSON only.",
                 }],
                 system=QUERY_SYSTEM,
                 max_retries=2,
@@ -233,9 +193,6 @@ class SearchAgent(BaseAgent):
             )
             return [topic]
 
-    # ------------------------------------------------------------------
-    # Phase 2 — per-provider parallel search
-    # ------------------------------------------------------------------
 
     def _search_provider_queries(
         self,
@@ -246,13 +203,14 @@ class SearchAgent(BaseAgent):
         all_papers: list[dict] = []
         per_query: dict[str, int] = {}
 
-        def run_one(query: str) -> tuple[str, list[dict]]:
+        for query in queries:
             try:
                 result = provider_fn(query=query, max_results=n_per_query)
                 papers = result.get("papers", [])
                 for rank, p in enumerate(papers):
                     p["_rank"] = rank
-                return query, papers
+                per_query[query] = len(papers)
+                all_papers.extend(papers)
             except Exception as exc:
                 logger.warning(
                     "provider_query_failed",
@@ -261,20 +219,64 @@ class SearchAgent(BaseAgent):
                     error=str(exc),
                     agent=self.agent_name,
                 )
-                return query, []
-
-        with ThreadPoolExecutor(max_workers=len(queries)) as pool:
-            futures = {pool.submit(run_one, q): q for q in queries}
-            for future in as_completed(futures):
-                query, papers = future.result()
-                per_query[query] = len(papers)
-                all_papers.extend(papers)
+                per_query[query] = 0
 
         return all_papers, per_query
 
-    # ------------------------------------------------------------------
-    # Phase 3 — relevance ranking
-    # ------------------------------------------------------------------
+    def _search_all_providers(
+        self,
+        queries: list[str],
+        n_per_query: int,
+    ) -> list[dict]:
+        provider_results: list[dict] = []
+
+        def run_provider(provider: tuple[Callable, str, str]) -> dict:
+            provider_fn, tool_name, display_name = provider
+            started_at = time.monotonic()
+            papers, per_query = self._search_provider_queries(
+                provider_fn,
+                queries,
+                n_per_query,
+            )
+            return {
+                "tool_name": tool_name,
+                "display_name": display_name,
+                "papers": papers,
+                "per_query": per_query,
+                "duration_ms": int((time.monotonic() - started_at) * 1000),
+            }
+
+        with ThreadPoolExecutor(max_workers=len(_PROVIDERS)) as pool:
+            futures = {
+                pool.submit(run_provider, provider): provider
+                for provider in _PROVIDERS
+            }
+            for future in as_completed(futures):
+                provider_fn, tool_name, display_name = futures[future]
+                try:
+                    provider_results.append(future.result())
+                except Exception as exc:
+                    logger.warning(
+                        "provider_search_failed",
+                        provider=provider_fn.__name__,
+                        error=str(exc),
+                        agent=self.agent_name,
+                    )
+                    provider_results.append({
+                        "tool_name": tool_name,
+                        "display_name": display_name,
+                        "papers": [],
+                        "per_query": {},
+                        "duration_ms": 0,
+                    })
+
+        return sorted(
+            provider_results,
+            key=lambda provider_result: [
+                provider[2] for provider in _PROVIDERS
+            ].index(provider_result["display_name"]),
+        )
+
 
     def _rank_and_select(self, candidates: list[dict], limit: int) -> list[dict]:
         seen: dict[str, dict] = {}
@@ -289,13 +291,18 @@ class SearchAgent(BaseAgent):
             citations = paper.get("citation_count") or 0
             citation_bonus = min(math.log10(citations + 1) / 5.0, 0.4)
             score = position_score + citation_bonus
+            source = paper.get("source", "unknown")
 
             if aid in seen:
-                seen[aid]["_score"] += score + 0.3
+                sources = seen[aid].setdefault("_sources", set())
+                cross_provider_bonus = 0.3 if source not in sources else 0.05
+                seen[aid]["_score"] += score + cross_provider_bonus
+                sources.add(source)
             else:
                 clean = {k: v for k, v in paper.items() if not k.startswith("_")}
                 clean["arxiv_id"] = aid
                 clean["_score"] = score
+                clean["_sources"] = {source}
                 seen[aid] = clean
 
         ranked = sorted(seen.values(), key=lambda p: p["_score"], reverse=True)

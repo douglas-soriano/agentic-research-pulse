@@ -1,7 +1,3 @@
-"""
-Unit tests for search_arxiv.
-HTTP calls and time.sleep are mocked — no real network traffic.
-"""
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -80,7 +76,7 @@ def test_search_arxiv_truncates_long_abstract(mock_fetch, mock_sleep):
 
     result = search_arxiv("rag")
 
-    assert len(result["papers"][0]["abstract"]) <= 401  # 400 chars + ellipsis char
+    assert len(result["papers"][0]["abstract"]) <= 401
 
 
 @patch("time.sleep")

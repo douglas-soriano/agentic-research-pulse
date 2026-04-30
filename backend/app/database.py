@@ -6,10 +6,11 @@ from sqlalchemy.orm import DeclarativeBase, Session
 from sqlalchemy.pool import StaticPool
 
 from app.config import settings
+from app.utils.time import utc_now
 
 
 class Base(DeclarativeBase):
-    pass
+    ...
 
 
 class PaperRow(Base):
@@ -17,14 +18,14 @@ class PaperRow(Base):
     id = Column(String, primary_key=True)
     arxiv_id = Column(String, unique=True, index=True)
     title = Column(Text)
-    authors = Column(Text)  # JSON
+    authors = Column(Text)
     abstract = Column(Text)
     published_at = Column(DateTime)
     topic_id = Column(String, index=True)
     full_text = Column(Text, nullable=True)
     chunk_count = Column(Integer, default=0)
     embedded = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
 
 
 class ReviewRow(Base):
@@ -33,15 +34,15 @@ class ReviewRow(Base):
     topic_id = Column(String, index=True)
     topic_name = Column(String)
     synthesis = Column(Text)
-    citations = Column(Text, default="{}")  # JSON: {"XXXX": {paper_id, arxiv_id, title, ...}}
-    cited_papers = Column(Text)             # JSON: legacy list for quick paper lookup
+    citations = Column(Text, default="{}")
+    cited_papers = Column(Text)
     papers_processed = Column(Integer, default=0)
     claims_extracted = Column(Integer, default=0)
     citations_verified = Column(Integer, default=0)
     citations_rejected = Column(Integer, default=0)
     version = Column(Integer, default=1)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now)
 
 
 class TopicRow(Base):
@@ -49,7 +50,7 @@ class TopicRow(Base):
     id = Column(String, primary_key=True)
     name = Column(String, unique=True)
     last_fetched_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
 
 
 class TraceRow(Base):
@@ -58,13 +59,13 @@ class TraceRow(Base):
     job_id = Column(String, unique=True, index=True)
     topic = Column(String)
     status = Column(String, default="running")
-    steps = Column(Text)  # JSON
+    steps = Column(Text)
     total_duration_ms = Column(Integer, default=0)
     papers_processed = Column(Integer, default=0)
     claims_extracted = Column(Integer, default=0)
     citations_verified = Column(Integer, default=0)
     citations_rejected = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
     completed_at = Column(DateTime, nullable=True)
 
 
@@ -96,7 +97,6 @@ def _sqlite_type_for_column(col: Column) -> str:
 
 
 def _sqlite_add_missing_columns() -> None:
-    """SQLite does not migrate existing tables on create_all(); add new columns in place."""
     if not str(engine.url).startswith("sqlite"):
         return
 

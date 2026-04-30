@@ -1,10 +1,3 @@
-"""
-run_pipeline_job — the main async job triggered when a topic is added.
-Runs the full multi-agent orchestration pipeline.
-
-On final failure (non-retryable or retries exhausted), the job is moved
-to the Dead Letter Queue for inspection and manual replay.
-"""
 import structlog
 from openai import APIStatusError
 
@@ -17,8 +10,6 @@ logger = structlog.get_logger(__name__)
 
 
 def _retryable_pipeline_error(exc: BaseException) -> bool:
-    """Retry only on true transient infrastructure failures.
-    Circuit open errors are not retried — they have their own recovery timeout."""
     if isinstance(exc, CircuitOpenError):
         return False
     if isinstance(exc, APIStatusError):
