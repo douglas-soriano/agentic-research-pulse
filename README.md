@@ -1,6 +1,10 @@
-# ResearchPulse
+![ResearchPulse](docs/images/reasoning.png)
 
-Production-grade multi-agent AI system for monitoring scientific literature, extracting verified claims, and generating living literature reviews with grounded citations.
+# 📚 ResearchPulse
+
+> **This project is also a study and practice project for agent workflows.** It shows how to build agents without hiding the hard parts: provider calls, retries, tool use, queues, traces, errors, and final output checks.
+
+ResearchPulse is a multi-agent app that searches scientific papers, reads them, checks citations, and writes a clear literature review.
 
 ![Python 3.11](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
@@ -10,69 +14,55 @@ Production-grade multi-agent AI system for monitoring scientific literature, ext
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
 ![LangSmith](https://img.shields.io/badge/LangSmith-observability-1C3C3C)
 
-## What It Does
+ResearchPulse helps turn a research topic into a grounded literature review. A user enters a term like `Mindfulness and mental health`, and the system searches papers, stores useful text chunks, asks LLM agents to extract claims, validates citations with `chunk_id`, and returns a review with traceable sources.
 
-Literature reviews take days because the work is not only search. A useful review requires finding relevant papers, reading them, extracting defensible claims, checking that each claim is tied to source text, and synthesizing the results into a coherent document. ResearchPulse automates that full pipeline: search, ingest, embed, extract, verify, synthesize, and store a review that can be refreshed as new papers appear.
+Demo video: add a GitHub uploaded video link here. GitHub READMEs work best with videos uploaded to GitHub issues, pull requests, releases, or user attachments, then linked in Markdown.
 
-The system uses a multi-agent architecture where each agent has one responsibility. `SearchAgent` plans and runs paper discovery. `ExtractAgent` turns retrieved chunks into structured claims. `SynthesisAgent` writes the review only after citations have been verified against ChromaDB metadata. Citations are grounded by `chunk_id` and `paper_id` validation before the final review is saved, so hallucinated source identifiers are rejected in code rather than handled by prompt wording alone.
+## About This Project
 
-ResearchPulse is not a RAG chatbot. It runs durable asynchronous jobs through Celery and Redis, stores source chunks in a vector database, validates citation references structurally, streams lifecycle and trace events through Server-Sent Events, and records execution details for operational debugging. The system is built for long-running agent workflows where failures, retries, observability, and traceability matter.
+Literature reviews take a lot of time because reading papers is only one part of the job. A good review also needs paper search, claim extraction, citation checks, and a final text that is easy to read.
+
+ResearchPulse was built to make that workflow easier. The product idea is simple: give the app a research topic, wait while the agents reason through the work, and receive a review with citations that can be checked.
+
+![Our Agents](docs/images/agentic_robots.png)
+
+## Agent Responsibilities
+
+- `Orchestrator` controls the full run. It decides the order of each step, starts the agents, tracks the job, sends live events to the UI, and stops the workflow when a fatal error happens.
+
+- `Search Agent` finds papers. It plans search queries with an LLM, calls the paper search providers, removes duplicates, ranks the papers, and sends the best papers to the next step.
+
+ - `EmbeddingService` prepares the paper text for search. It splits full text into chunks, stores the chunks in ChromaDB, and keeps metadata like `paper_id` and `chunk_id` so citations can be checked later.
+
+- `Extract Agent` reads stored chunks and extracts useful claims. It uses an LLM to turn paper text into structured claims, but each claim must point back to a real stored chunk.
+
+- `Synthesis Agent` writes the final review. It only uses verified claims, builds citation markers, and rejects citations that do not match a real `chunk_id` in ChromaDB.
 
 ## Architecture
 
-```text
-User
-  |
-  v
-Next.js UI / HTTP Client
-  |
-  v
-FastAPI API
-  |
-  v
-Redis Queue
-  |
-  v
-Celery Worker
-  |
-  v
-+------------------------------------------------------------------+
-| SearchAgent -> EmbeddingService -> ExtractAgent -> SynthesisAgent |
-+------------------------------------------------------------------+
-  |
-  v
-Review + citations + trace
-```
+ResearchPulse uses a web app, an API, a queue, background workers, a vector database, and LLM calls. The API does not do the full research work during the HTTP request. It creates a job, sends it to Redis, and Celery workers process it in the background. This makes the app better for slow work like paper search, full-text fetches, LLM calls, retries, and error handling.
 
-| Component | Role |
+![Architecture](docs/images/agentic_workflow.png)
+
+| Component | What It Does |
 |---|---|
-| FastAPI | HTTP API, request validation, response serialization, and SSE endpoints. It delegates work to services and pipelines. |
-| Redis | Broker for Celery jobs and pub/sub transport for real-time lifecycle and trace events. |
-| Celery | Executes long-running research pipelines outside the request path. |
-| ChromaDB | Stores paper chunks and metadata for semantic retrieval and citation validation. |
-| LangSmith | Optional tracing backend for agent and LLM spans. |
-| Flower | Operational dashboard for queue depth, workers, retries, and task history. |
-| Next.js | Frontend for topic submission, review display, citation inspection, and trace viewing. |
-
-### Agent Responsibilities
-
-`SearchAgent` is responsible for literature discovery. It plans search queries, calls paper search providers, deduplicates candidates, and ranks papers. It must not fetch full text, write reviews, persist database rows, or decide citation validity.
-
-`ExtractAgent` is responsible for converting retrieved paper chunks into structured claims. It receives real chunks from ChromaDB, presents bounded context to the LLM, and maps model output back to known chunk identifiers. It must not invent chunk IDs, search for new papers, synthesize the final review, or write database state.
-
-`SynthesisAgent` is responsible for writing the final literature review from verified claims. It builds citation tokens from claims that have passed `chunk_id` validation and saves only grounded citation metadata. It must not perform paper discovery, mutate vector storage, or trust citation identifiers produced by the LLM without validation.
-
-`Orchestrator` coordinates the pipeline phases. It owns execution order, budget sharing, tracing, lifecycle events, and failure propagation. It must not contain provider-specific tool logic or direct persistence queries.
+| FastAPI | Receives requests, validates input, exposes API routes, and streams live events. |
+| Redis | Stores Celery jobs and sends live pub/sub events. |
+| Celery | Runs long research jobs outside the request path. |
+| ChromaDB | Stores paper chunks for semantic search and citation checks. |
+| LangSmith | Tracks LLM calls, timing, costs, and agent traces. |
+| Flower | Shows queue status, worker status, retries, and task history. |
+| Next.js | Provides the user interface for topics, reasoning, and results. |
 
 ## Tech Stack
 
 | Area | Technology |
 |---|---|
 | Backend | Python 3.11, FastAPI, Celery, SQLAlchemy, Pydantic |
-| AI | Gemini OpenAI-compatible API via the OpenAI SDK and Instructor for structured output; no LangChain agent runtime |
-| Vector DB | ChromaDB with default all-MiniLM-L6-v2-style local embeddings |
+| AI | Gemini through the OpenAI-compatible API, OpenAI SDK, Instructor |
+| Vector DB | ChromaDB |
 | Queue | Redis, Celery, Celery Beat |
-| Observability | LangSmith, Flower, structured logging with `structlog`, persisted agent traces |
+| Observability | LangSmith, Flower, structured logs, persisted traces |
 | Frontend | Next.js 14, TypeScript |
 | Infrastructure | Docker Compose |
 
@@ -91,30 +81,31 @@ cd researchpulse
 cp .env.example .env
 ```
 
-Required variables:
+Required and useful variables:
 
-| Variable | Required | Description |
-|---|---:|---|
-| `LLM_PROVIDER` | Yes | LLM provider. Use `gemini` for the production path or `local` for Ollama. |
-| `GEMINI_API_KEY` | Yes when `LLM_PROVIDER=gemini` | Google AI Studio API key used by the primary LLM provider. |
-| `LANGCHAIN_API_KEY` | Required for LangSmith tracing | LangSmith API key. Set `LANGCHAIN_TRACING_V2=true` to enable trace export. |
-| `LANGCHAIN_TRACING_V2` | No | Enables LangSmith tracing when set to `true`. |
-| `LANGCHAIN_PROJECT` | No | LangSmith project name. Defaults to `researchpulse`. |
-| `OPENAI_API_KEY` | No | Optional fallback provider after Gemini. |
-| `OPENAI_BASE_URL` | No | Optional override for the OpenAI-compatible fallback endpoint. |
-| `OPENAI_MODEL` | No | Optional fallback model override. |
-| `REDIS_URL` | No | Redis connection URL. Docker Compose sets this to `redis://redis:6379/0`. |
-| `CHROMA_HOST` | No | ChromaDB hostname. Docker Compose sets this to `chroma`. |
-| `CHROMA_PORT` | No | ChromaDB port. Docker Compose sets this to `8000`. |
-| `DATABASE_URL` | No | SQLAlchemy database URL. Docker Compose uses SQLite at `/data/researchpulse.db`. |
+| Variable | Description |
+|---|---|
+| `LLM_PROVIDER` * | LLM provider. Use `gemini` for the main cloud path or `local` for Ollama. |
+| `GEMINI_API_KEY` * | Required when `LLM_PROVIDER=gemini`. Get it from Google AI Studio. |
+| `LLM_MODEL` | Optional model override. |
+| `OPENAI_API_KEY` | Optional fallback provider key. |
+| `OPENAI_BASE_URL` | Optional OpenAI-compatible API URL override. |
+| `OPENAI_MODEL` | Optional fallback model override. |
+| `LANGCHAIN_TRACING_V2` | Set to `true` to send traces to LangSmith. |
+| `LANGCHAIN_API_KEY` | LangSmith API key. |
+| `LANGCHAIN_PROJECT` | LangSmith project name. Defaults to `researchpulse`. |
+| `REDIS_URL` | Redis connection URL. Docker Compose already sets a good default. |
+| `CHROMA_HOST` | ChromaDB host. Docker Compose uses `chroma`. |
+| `CHROMA_PORT` | ChromaDB port. Docker Compose uses `8000`. |
+| `DATABASE_URL` | SQLAlchemy database URL. Docker Compose uses SQLite in `/data`. |
 
-### 3. Start the stack
+### 3. Start the app
 
 ```bash
-docker compose up
+make dev
 ```
 
-Services:
+Local URLs:
 
 | Service | URL |
 |---|---|
@@ -126,53 +117,33 @@ Services:
 
 ## How To Use
 
-Create a topic and enqueue a research pipeline:
+Open `http://localhost:3000`.
 
-```bash
-curl -X POST http://localhost:8000/api/v1/topics \
-  -H "Content-Type: application/json" \
-  -d '{"name": "retrieval augmented generation"}'
-```
+![Home Screen](docs/images/initial_page.png)
 
-The response includes `id` and `job_id`. Use `id` as the topic identifier and `job_id` as the trace identifier.
+Type a research topic, for example `Mindfulness and mental health`, and start the research run. The app will create a background job and show the reasoning steps while the agents work.
 
-Retrieve the generated review:
+![Reasoning](docs/images/reasoning.png)
 
-```bash
-curl http://localhost:8000/api/v1/reviews/{topic_id}
-```
+When the job finishes, the result page shows the final review, the selected papers, extracted claims, and citations.
 
-Inspect the persisted agent decision trace:
-
-```bash
-curl http://localhost:8000/api/v1/traces/{job_id}
-```
-
-Open `http://localhost:5555` for the Flower queue dashboard.
-
-Open `http://localhost:3000` for the frontend.
+![Reasoning](docs/images/reasoning.png)
 
 ## Key Engineering Decisions
 
-### Native Provider SDK Instead Of LangChain Agents
+> **ResearchPulse is an agent workflow study, so some technical choices were made to learn and show the full system instead of hiding it behind a high-level framework.**
 
-ResearchPulse uses direct provider calls through the OpenAI-compatible SDK path and structured output validation rather than a LangChain agent runtime. The goal is direct control over the tool loop, retry behavior, provider fallback, circuit breaking, logging, and failure semantics. Agent abstractions should not hide API errors, malformed tool calls, or provider-specific retry decisions.
+- **Native Provider SDK Instead Of LangChain Agents** - The agents call providers through the OpenAI-compatible SDK path instead of using a LangChain agent runtime. This gives direct control over tool loops, retries, fallbacks, circuit breakers, malformed responses, logs, and fatal errors.
 
-The current implementation uses Gemini as the primary production provider. If the project is migrated to Anthropic Claude, the same principle should hold: use native tool calling directly and keep the orchestration loop explicit.
+- **Multi-LLM Calls** - The LLM layer supports more than one provider path. This helps test provider fallback, retry rules, response validation, rate limits, and different failure types such as timeouts, bad JSON, empty responses, and fatal provider errors.
 
-### Citation Grounding Via `chunk_id` Validation
+- **Citation Grounding Via `chunk_id` Validation** - LLMs can write citations that look real but are not linked to real source text. ResearchPulse checks each citation in code. A citation must point to a stored `chunk_id` and the expected `paper_id` before it can be used in the final review.
 
-LLMs hallucinate sources. Prompt instructions reduce the frequency but do not create a guarantee. ResearchPulse validates citations structurally by checking that every cited `chunk_id` exists in ChromaDB and belongs to the expected `paper_id`. Claims that cannot be mapped to stored source chunks are rejected before synthesis metadata is persisted.
+- **Queues For Long Jobs** - Research workflows can take minutes. They call external APIs, fetch papers, write vector chunks, ask LLMs for structured output, and may need retries. Redis and Celery keep this work outside the HTTP request and make it easier to retry, inspect, and run with multiple workers.
 
-This moves citation correctness from prompt compliance into application invariants. The model may write prose, but it does not get to define source truth.
+- **Two SSE Streams** - The app uses two live streams. One stream sends simple job status like queued, started, done, and failed. The other stream sends detailed trace events like agent steps, tool calls, token counts, timings, and errors. This keeps the main UI fast while still allowing deep debugging.
 
-### Celery And Redis Instead Of Serverless
-
-Agent runs can take minutes. They involve external API calls, document fetching, vector writes, retries, and synthesis. Serverless platforms with short execution windows, cold starts, and weak long-running stream semantics are a poor fit for this workload. Celery and Redis provide durable queues, explicit retries, worker concurrency, operational visibility through Flower, and a clean separation between HTTP request handling and background execution.
-
-### Two SSE Streams
-
-ResearchPulse separates lifecycle events from trace events. Lifecycle streams report coarse job state such as queued, started, done, and failed. Trace streams report real-time agent steps, tool calls, durations, token counts, and errors. These streams serve different consumers and should not block each other: UI status can remain lightweight while trace viewers receive high-volume debugging data.
+- **Error Handling And Dead Letter Queue** - Some failures are retried with exponential backoff. Some failures are fatal and stop the job with a clear error. If a task keeps failing, it can be moved to the Dead Letter Queue so it can be inspected later instead of being lost.
 
 ## Project Structure
 
@@ -180,31 +151,52 @@ ResearchPulse separates lifecycle events from trace events. Lifecycle streams re
 researchpulse/
 ├── backend/
 │   ├── app/
-│   │   ├── agents/          Agent orchestration and decision logic.
-│   │   ├── api/             FastAPI routers and response models.
+│   │   ├── agents/          Agent order, decisions, and workflow control.
+│   │   ├── tools/           Search, fetch, and vector tools used by agents.
+│   │   ├── services/        Business logic with no HTTP route code.
 │   │   ├── jobs/            Celery task definitions.
+│   │   ├── repositories/    Database access.
 │   │   ├── models/          Pydantic schemas and data contracts.
-│   │   ├── repositories/    SQLAlchemy persistence access.
-│   │   ├── services/        Business logic and workflow actions.
-│   │   ├── tools/           Agent-callable tools and tool schemas.
-│   │   ├── observability/   Logging, tracing, and cost utilities.
-│   │   ├── resilience/      Retry and circuit breaker utilities.
-│   │   └── pipelines/       High-level job enqueueing and topic workflow entry points.
+│   │   ├── api/             FastAPI routes.
+│   │   ├── observability/   Logs, traces, and LLM tracking helpers.
+│   │   ├── resilience/      Retry and circuit breaker code.
+│   │   └── pipelines/       High-level pipeline entry points.
 │   ├── tests/               Unit and integration tests.
-│   ├── main.py              FastAPI application entrypoint.
-│   └── celery_worker.py     Celery application and beat schedule.
+│   ├── main.py              FastAPI app entrypoint.
+│   └── celery_worker.py     Celery app and scheduled jobs.
 ├── frontend/
-│   └── src/app/             Next.js routes for topics, reviews, and traces.
-├── docker-compose.yml       Local production-like stack.
+│   └── src/app/             Next.js screens for topics, traces, and reviews.
+├── docs/
+│   └── images/              Project images, screenshots, and robot agents.
+├── docker-compose.yml       Local stack.
+├── Makefile                 Local commands.
 └── README.md
 ```
 
-## Screenshots
+## Endpoints
 
-<!-- screenshot: frontend review with citation badges -->
+The easiest way to inspect the API is through the local Swagger docs:
 
-<!-- screenshot: LangSmith trace showing agent spans -->
+```text
+http://localhost:8000/docs
+```
 
-<!-- screenshot: Flower dashboard with active workers -->
+## Observability
 
-<!-- screenshot: real-time trace viewer in the UI -->
+ResearchPulse can send traces to LangSmith. This helps track LLM calls, cost, latency, prompts, responses, retries, and agent steps. The app also stores local traces so the frontend can show what happened during a run.
+
+Flower is available at `http://localhost:5555` to inspect Celery workers, queue state, retries, and failed tasks.
+
+| | | |
+|-|-|-|
+| ![Logs1](docs/images/langsmith_logs.png) | ![Logs1](docs/images/langsmith_charts_1.png) | ![Logs1](docs/images/langsmith_charts_2.png) |
+
+## Tests
+
+The project has three main test types.
+
+- **Unit tests** check small parts of the system, like agent ranking logic or provider execution rules. They are fast and do not need an API key.
+
+- **End-to-end tests** run the main research pipeline with real components and check that papers, claims, citations, and reviews are produced as expected.
+
+- **LLM evaluation tests** run a small quality check with RAGAS or a local fallback. They compare generated answers with expected answers and retrieved context to catch weak or ungrounded output.
