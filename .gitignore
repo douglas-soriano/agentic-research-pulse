@@ -12,3 +12,4 @@ celerybeat-schedule
 node_modules/
 .claude/
 .rules/
+logs/
